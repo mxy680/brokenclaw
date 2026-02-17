@@ -10,6 +10,7 @@ from brokenclaw.auth import SUPPORTED_INTEGRATIONS, router as auth_router
 from brokenclaw.config import get_settings
 from brokenclaw.exceptions import AuthenticationError, IntegrationError, RateLimitError
 from brokenclaw.mcp_server import mcp
+from brokenclaw.routers.docs import router as docs_router
 from brokenclaw.routers.drive import router as drive_router
 from brokenclaw.routers.gmail import router as gmail_router
 from brokenclaw.routers.sheets import router as sheets_router
@@ -35,6 +36,7 @@ api.include_router(auth_router)
 api.include_router(gmail_router)
 api.include_router(drive_router)
 api.include_router(sheets_router)
+api.include_router(docs_router)
 
 
 @api.get("/api/status")

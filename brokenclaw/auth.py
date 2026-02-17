@@ -26,6 +26,9 @@ INTEGRATION_SCOPES = {
     "sheets": [
         "https://www.googleapis.com/auth/spreadsheets",
     ],
+    "docs": [
+        "https://www.googleapis.com/auth/documents",
+    ],
 }
 
 SUPPORTED_INTEGRATIONS = set(INTEGRATION_SCOPES.keys())
@@ -127,6 +130,10 @@ def get_drive_credentials(account: str = "default") -> Credentials:
 
 def get_sheets_credentials(account: str = "default") -> Credentials:
     return _get_credentials("sheets", account)
+
+
+def get_docs_credentials(account: str = "default") -> Credentials:
+    return _get_credentials("docs", account)
 
 
 # --- Auth router ---

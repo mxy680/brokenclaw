@@ -22,3 +22,8 @@ requires_sheets = pytest.mark.skipif(
     not _is_authenticated("sheets"),
     reason="Sheets not authenticated — run /auth/sheets/setup first",
 )
+
+requires_docs = pytest.mark.skipif(
+    not _is_authenticated("docs"),
+    reason="Docs not authenticated — run /auth/docs/setup first",
+)

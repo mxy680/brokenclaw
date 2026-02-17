@@ -2,6 +2,7 @@ from fastmcp import FastMCP
 
 from brokenclaw.auth import SUPPORTED_INTEGRATIONS, _get_token_store
 from brokenclaw.exceptions import AuthenticationError, IntegrationError, RateLimitError
+from brokenclaw.services import docs as docs_service
 from brokenclaw.services import drive as drive_service
 from brokenclaw.services import gmail as gmail_service
 from brokenclaw.services import sheets as sheets_service
@@ -186,6 +187,58 @@ def sheets_create_spreadsheet(title: str, sheet_names: list[str] | None = None, 
     Returns the new spreadsheet ID, title, and URL."""
     try:
         return sheets_service.create_spreadsheet(title, sheet_names, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+# --- Docs tools ---
+
+@mcp.tool
+def docs_get_document(document_id: str, account: str = "default") -> dict:
+    """Get Google Doc metadata: title, ID, and URL.
+    You need the document ID from the URL: docs.google.com/document/d/{DOCUMENT_ID}/edit"""
+    try:
+        return docs_service.get_document(document_id, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def docs_read_document(document_id: str, account: str = "default") -> dict:
+    """Read the full text content of a Google Doc. Returns the document title and extracted body text.
+    Use this to read the contents of a document."""
+    try:
+        return docs_service.get_document_content(document_id, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def docs_create_document(title: str, account: str = "default") -> dict:
+    """Create a new empty Google Doc with the given title.
+    Returns the new document ID, title, and URL."""
+    try:
+        return docs_service.create_document(title, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def docs_insert_text(document_id: str, text: str, index: int = 1, account: str = "default") -> dict:
+    """Insert text into a Google Doc at the specified position.
+    Index 1 = start of document body (default). The index refers to the character offset in the document."""
+    try:
+        return docs_service.insert_text(document_id, text, index, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def docs_replace_text(document_id: str, find: str, replace_with: str, match_case: bool = True, account: str = "default") -> dict:
+    """Find and replace text in a Google Doc. Replaces all occurrences of 'find' with 'replace_with'.
+    Set match_case=False for case-insensitive matching."""
+    try:
+        return docs_service.replace_text(document_id, find, replace_with, match_case, account=account).model_dump()
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 
