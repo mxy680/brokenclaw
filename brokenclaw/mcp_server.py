@@ -4,6 +4,7 @@ from brokenclaw.auth import SUPPORTED_INTEGRATIONS, _get_token_store
 from brokenclaw.exceptions import AuthenticationError, IntegrationError, RateLimitError
 from brokenclaw.services import drive as drive_service
 from brokenclaw.services import gmail as gmail_service
+from brokenclaw.services import sheets as sheets_service
 
 mcp = FastMCP("Brokenclaw")
 
@@ -133,6 +134,58 @@ def drive_create_folder(name: str, parent_folder_id: str | None = None, account:
     """Create a new folder in Google Drive. Optionally place it inside an existing folder."""
     try:
         return drive_service.create_folder(name, parent_folder_id, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+# --- Sheets tools ---
+
+@mcp.tool
+def sheets_get_spreadsheet(spreadsheet_id: str, account: str = "default") -> dict:
+    """Get spreadsheet metadata: title, list of sheet/tab names, and URL.
+    You need the spreadsheet ID from the URL: docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit"""
+    try:
+        return sheets_service.get_spreadsheet(spreadsheet_id, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def sheets_read_range(spreadsheet_id: str, range: str, account: str = "default") -> dict:
+    """Read a range of cells from a spreadsheet. Range uses A1 notation, e.g. 'Sheet1!A1:D10' or just 'A1:D10'.
+    Returns a 2D array of cell values."""
+    try:
+        return sheets_service.read_range(spreadsheet_id, range, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def sheets_write_range(spreadsheet_id: str, range: str, values: list[list[str]], account: str = "default") -> dict:
+    """Write values to a range of cells. Range uses A1 notation. Values is a 2D array where each inner array is a row.
+    Example: values=[["Name","Age"],["Alice","30"]] writes to two rows."""
+    try:
+        return sheets_service.write_range(spreadsheet_id, range, values, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def sheets_append_rows(spreadsheet_id: str, range: str, values: list[list[str]], account: str = "default") -> dict:
+    """Append rows after the last row with data. Range specifies which sheet/area to append to (e.g. 'Sheet1!A:D').
+    Values is a 2D array of rows to add."""
+    try:
+        return sheets_service.append_rows(spreadsheet_id, range, values, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def sheets_create_spreadsheet(title: str, sheet_names: list[str] | None = None, account: str = "default") -> dict:
+    """Create a new Google Sheets spreadsheet. Optionally provide sheet/tab names.
+    Returns the new spreadsheet ID, title, and URL."""
+    try:
+        return sheets_service.create_spreadsheet(title, sheet_names, account=account).model_dump()
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 

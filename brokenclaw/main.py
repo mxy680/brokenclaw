@@ -12,6 +12,7 @@ from brokenclaw.exceptions import AuthenticationError, IntegrationError, RateLim
 from brokenclaw.mcp_server import mcp
 from brokenclaw.routers.drive import router as drive_router
 from brokenclaw.routers.gmail import router as gmail_router
+from brokenclaw.routers.sheets import router as sheets_router
 
 
 # --- Localhost-only middleware ---
@@ -33,6 +34,7 @@ api = FastAPI(title="Brokenclaw", version="0.1.0")
 api.include_router(auth_router)
 api.include_router(gmail_router)
 api.include_router(drive_router)
+api.include_router(sheets_router)
 
 
 @api.get("/api/status")

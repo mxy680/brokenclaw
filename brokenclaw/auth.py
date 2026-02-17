@@ -23,6 +23,9 @@ INTEGRATION_SCOPES = {
     "drive": [
         "https://www.googleapis.com/auth/drive",
     ],
+    "sheets": [
+        "https://www.googleapis.com/auth/spreadsheets",
+    ],
 }
 
 SUPPORTED_INTEGRATIONS = set(INTEGRATION_SCOPES.keys())
@@ -120,6 +123,10 @@ def get_gmail_credentials(account: str = "default") -> Credentials:
 
 def get_drive_credentials(account: str = "default") -> Credentials:
     return _get_credentials("drive", account)
+
+
+def get_sheets_credentials(account: str = "default") -> Credentials:
+    return _get_credentials("sheets", account)
 
 
 # --- Auth router ---
