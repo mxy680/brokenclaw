@@ -1,0 +1,91 @@
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.routing import Mount
+
+from brokenclaw.auth import router as auth_router
+from brokenclaw.config import get_settings
+from brokenclaw.exceptions import AuthenticationError, IntegrationError, RateLimitError
+from brokenclaw.mcp_server import mcp
+from brokenclaw.models.common import StatusResponse
+from brokenclaw.routers.gmail import router as gmail_router
+
+
+# --- Localhost-only middleware ---
+
+class LocalhostOnlyMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        client_host = request.client.host if request.client else None
+        if client_host not in ("127.0.0.1", "::1", "localhost"):
+            return JSONResponse(
+                status_code=403,
+                content={"error_code": "forbidden", "message": "Localhost access only"},
+            )
+        return await call_next(request)
+
+
+# --- FastAPI app ---
+
+api = FastAPI(title="Brokenclaw", version="0.1.0")
+api.include_router(auth_router)
+api.include_router(gmail_router)
+
+
+@api.get("/api/status")
+def api_status() -> StatusResponse:
+    from brokenclaw.auth import _get_token_store
+
+    store = _get_token_store()
+    gmail_ok = store.has_valid_token("gmail")
+    return StatusResponse(
+        integration="gmail",
+        authenticated=gmail_ok,
+        message="Ready" if gmail_ok else "Not authenticated — visit /auth/gmail/setup",
+    )
+
+
+# --- Exception handlers ---
+
+@api.exception_handler(AuthenticationError)
+async def auth_error_handler(request: Request, exc: AuthenticationError):
+    return JSONResponse(status_code=401, content={"error_code": "auth_error", "message": str(exc)})
+
+
+@api.exception_handler(IntegrationError)
+async def integration_error_handler(request: Request, exc: IntegrationError):
+    return JSONResponse(status_code=500, content={"error_code": "integration_error", "message": str(exc)})
+
+
+@api.exception_handler(RateLimitError)
+async def rate_limit_error_handler(request: Request, exc: RateLimitError):
+    return JSONResponse(status_code=429, content={"error_code": "rate_limit", "message": str(exc)})
+
+
+# --- Starlette root app ---
+
+mcp_app = mcp.http_app(path="/", stateless_http=True)
+
+app = Starlette(
+    middleware=[Middleware(LocalhostOnlyMiddleware)],
+    routes=[
+        Mount("/mcp", app=mcp_app),
+        Mount("/", app=api),
+    ],
+)
+
+
+def run():
+    settings = get_settings()
+    uvicorn.run(
+        "brokenclaw.main:app",
+        host=settings.host,
+        port=settings.port,
+        log_level=settings.log_level.lower(),
+    )
+
+
+if __name__ == "__main__":
+    run()
