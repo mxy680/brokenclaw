@@ -42,3 +42,8 @@ requires_forms = pytest.mark.skipif(
     not _is_authenticated("forms"),
     reason="Forms not authenticated — run /auth/forms/setup first",
 )
+
+requires_youtube = pytest.mark.skipif(
+    not _is_authenticated("youtube"),
+    reason="YouTube not authenticated — run /auth/youtube/setup first",
+)

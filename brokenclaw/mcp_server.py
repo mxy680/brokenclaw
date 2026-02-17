@@ -10,6 +10,7 @@ from brokenclaw.services import slides as slides_service
 from brokenclaw.services import tasks as tasks_service
 from brokenclaw.services import forms as forms_service
 from brokenclaw.services import maps as maps_service
+from brokenclaw.services import youtube as youtube_service
 
 mcp = FastMCP("Brokenclaw")
 
@@ -529,6 +530,60 @@ def maps_timezone(lat: float, lng: float) -> dict:
     name, and UTC offsets. Use maps_geocode first to convert an address to coordinates."""
     try:
         return maps_service.get_timezone(lat, lng).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+# --- YouTube tools ---
+
+@mcp.tool
+def youtube_search(query: str, max_results: int = 10, account: str = "default") -> dict:
+    """Search YouTube for videos. Returns a list of videos with title, description, channel, and URL.
+    Use account parameter to specify which YouTube account."""
+    try:
+        videos = youtube_service.search_videos(query, max_results, account=account)
+        return {"videos": [v.model_dump() for v in videos], "count": len(videos)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def youtube_get_video(video_id: str, account: str = "default") -> dict:
+    """Get detailed information about a YouTube video by its ID.
+    Returns title, description, tags, duration, view/like/comment counts, and URL."""
+    try:
+        return youtube_service.get_video(video_id, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def youtube_get_channel(channel_id: str, account: str = "default") -> dict:
+    """Get YouTube channel information by channel ID.
+    Returns title, description, subscriber/video/view counts, and URL."""
+    try:
+        return youtube_service.get_channel(channel_id, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def youtube_list_playlists(channel_id: str | None = None, max_results: int = 25, account: str = "default") -> dict:
+    """List YouTube playlists. If channel_id is provided, lists that channel's playlists.
+    If omitted, lists the authenticated user's own playlists."""
+    try:
+        playlists = youtube_service.list_playlists(channel_id, max_results, account=account)
+        return {"playlists": [p.model_dump() for p in playlists], "count": len(playlists)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def youtube_list_playlist_items(playlist_id: str, max_results: int = 50, account: str = "default") -> dict:
+    """List videos in a YouTube playlist. Returns video titles, descriptions, positions, and URLs."""
+    try:
+        items = youtube_service.list_playlist_items(playlist_id, max_results, account=account)
+        return {"items": [i.model_dump() for i in items], "count": len(items)}
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 
