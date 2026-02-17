@@ -1,6 +1,6 @@
 # Brokenclaw
 
-Integration server that exposes external platforms (Gmail, Google Drive, Sheets, Docs, Slides, Tasks, Forms) via REST API + MCP tools.
+Integration server that exposes external platforms (Gmail, Google Drive, Sheets, Docs, Slides, Tasks, Forms, Maps) via REST API + MCP tools.
 
 ## IMPORTANT: Always run the server on port 9000, not 8000.
 
@@ -30,6 +30,7 @@ uvicorn brokenclaw.main:app --host 127.0.0.1 --port 9000
 - `brokenclaw/services/slides.py` — Google Slides business logic (shared by REST + MCP)
 - `brokenclaw/services/tasks.py` — Google Tasks business logic (shared by REST + MCP)
 - `brokenclaw/services/forms.py` — Google Forms business logic (shared by REST + MCP)
+- `brokenclaw/services/maps.py` — Google Maps Platform business logic (API key, not OAuth)
 - `brokenclaw/auth.py` — OAuth2 flow + token persistence (generalized for all integrations)
 - `brokenclaw/config.py` — pydantic-settings, reads `.env`
 
@@ -73,3 +74,4 @@ For Claude Code, add to MCP settings:
 - Auth is generalized: `INTEGRATION_SCOPES` dict, `_get_credentials(integration, account)` handles all
 - OAuth client is a **web** type (not desktop) — uses redirect-based flow, not `InstalledAppFlow`
 - `OAUTHLIB_RELAX_TOKEN_SCOPE` is set to handle Google returning broader scopes than requested
+- **Maps** is the exception to the OAuth pattern — uses an API key stored in `.env` as `GOOGLE_MAPS_API_KEY`

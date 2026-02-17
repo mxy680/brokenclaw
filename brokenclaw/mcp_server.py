@@ -9,6 +9,7 @@ from brokenclaw.services import sheets as sheets_service
 from brokenclaw.services import slides as slides_service
 from brokenclaw.services import tasks as tasks_service
 from brokenclaw.services import forms as forms_service
+from brokenclaw.services import maps as maps_service
 
 mcp = FastMCP("Brokenclaw")
 
@@ -432,12 +433,80 @@ def forms_get_response(form_id: str, response_id: str, account: str = "default")
         return _handle_mcp_error(e)
 
 
+# --- Maps tools ---
+
+@mcp.tool
+def maps_geocode(address: str) -> dict:
+    """Convert an address or place name to geographic coordinates (lat/lng).
+    Example: 'Empire State Building, New York' or '1600 Amphitheatre Parkway, Mountain View, CA'."""
+    try:
+        results = maps_service.geocode(address)
+        return {"results": [r.model_dump() for r in results], "count": len(results)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def maps_reverse_geocode(lat: float, lng: float) -> dict:
+    """Convert geographic coordinates to a human-readable address."""
+    try:
+        results = maps_service.reverse_geocode(lat, lng)
+        return {"results": [r.model_dump() for r in results], "count": len(results)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def maps_directions(origin: str, destination: str, mode: str = "driving") -> dict:
+    """Get directions between two places. Returns routes with step-by-step instructions, distance, and duration.
+    Mode: 'driving', 'walking', 'bicycling', or 'transit'."""
+    try:
+        routes = maps_service.directions(origin, destination, mode)
+        return {"routes": [r.model_dump() for r in routes], "count": len(routes)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def maps_search_places(query: str, max_results: int = 10) -> dict:
+    """Search for places by text query. Example: 'coffee shops near Times Square' or 'best pizza in Chicago'.
+    Returns place names, addresses, ratings, and place IDs for further detail lookup."""
+    try:
+        results = maps_service.search_places(query, max_results)
+        return {"places": [r.model_dump() for r in results], "count": len(results)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def maps_place_details(place_id: str) -> dict:
+    """Get detailed information about a place by its place ID (from maps_search_places or maps_geocode).
+    Returns name, address, phone, website, rating, and Google Maps URL."""
+    try:
+        return maps_service.get_place_details(place_id).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def maps_distance_matrix(origins: list[str], destinations: list[str], mode: str = "driving") -> dict:
+    """Calculate travel distance and time between multiple origins and destinations.
+    Mode: 'driving', 'walking', 'bicycling', or 'transit'.
+    Example: origins=['New York'], destinations=['Boston', 'Philadelphia']."""
+    try:
+        entries = maps_service.distance_matrix(origins, destinations, mode)
+        return {"entries": [e.model_dump() for e in entries], "count": len(entries)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
 # --- Status tool ---
 
 @mcp.tool
 def brokenclaw_status() -> dict:
     """Check which integrations are authenticated and ready to use.
-    Shows all authenticated accounts per integration."""
+    Shows all authenticated accounts per integration and Maps API key status."""
+    from brokenclaw.config import get_settings
     store = _get_token_store()
     integrations = {}
     for name in SUPPORTED_INTEGRATIONS:
@@ -450,4 +519,9 @@ def brokenclaw_status() -> dict:
                 else f"No accounts authenticated — user should visit /auth/{name}/setup"
             ),
         }
+    maps_key = get_settings().google_maps_api_key
+    integrations["maps"] = {
+        "authenticated_accounts": ["api_key"] if maps_key else [],
+        "message": "API key configured" if maps_key else "No API key — set GOOGLE_MAPS_API_KEY in .env",
+    }
     return {"integrations": integrations}
