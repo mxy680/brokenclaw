@@ -1,6 +1,6 @@
 # Brokenclaw
 
-Integration server that exposes external platforms (Gmail, Google Drive) via REST API + MCP tools.
+Integration server that exposes external platforms (Gmail, Google Drive, Sheets, Docs, Slides, Tasks) via REST API + MCP tools.
 
 ## IMPORTANT: Always run the server on port 9000, not 8000.
 
@@ -25,6 +25,10 @@ uvicorn brokenclaw.main:app --host 127.0.0.1 --port 9000
 - `brokenclaw/mcp_server.py` — FastMCP tools (what Claude sees)
 - `brokenclaw/services/gmail.py` — Gmail business logic (shared by REST + MCP)
 - `brokenclaw/services/drive.py` — Google Drive business logic (shared by REST + MCP)
+- `brokenclaw/services/sheets.py` — Google Sheets business logic (shared by REST + MCP)
+- `brokenclaw/services/docs.py` — Google Docs business logic (shared by REST + MCP)
+- `brokenclaw/services/slides.py` — Google Slides business logic (shared by REST + MCP)
+- `brokenclaw/services/tasks.py` — Google Tasks business logic (shared by REST + MCP)
 - `brokenclaw/auth.py` — OAuth2 flow + token persistence (generalized for all integrations)
 - `brokenclaw/config.py` — pydantic-settings, reads `.env`
 
@@ -33,6 +37,7 @@ uvicorn brokenclaw.main:app --host 127.0.0.1 --port 9000
 1. Place `client_secret.json` from Google Cloud Console in project root
 2. Visit `http://localhost:9000/auth/gmail/setup` to authenticate Gmail
 3. Visit `http://localhost:9000/auth/drive/setup` to authenticate Drive
+3b. Similarly for Sheets, Docs, Slides, Tasks: `http://localhost:9000/auth/{integration}/setup`
 4. Add redirect URIs to Google Cloud Console: `http://localhost:9000/auth/{integration}/callback`
 5. Tokens auto-refresh thereafter
 

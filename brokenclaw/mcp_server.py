@@ -7,6 +7,7 @@ from brokenclaw.services import drive as drive_service
 from brokenclaw.services import gmail as gmail_service
 from brokenclaw.services import sheets as sheets_service
 from brokenclaw.services import slides as slides_service
+from brokenclaw.services import tasks as tasks_service
 
 mcp = FastMCP("Brokenclaw")
 
@@ -292,6 +293,78 @@ def slides_replace_text(presentation_id: str, find: str, replace_with: str, matc
     Set match_case=False for case-insensitive matching."""
     try:
         return slides_service.replace_text(presentation_id, find, replace_with, match_case, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+# --- Tasks tools ---
+
+@mcp.tool
+def tasks_list_task_lists(max_results: int = 20, account: str = "default") -> dict:
+    """List all Google Tasks lists for the user. Returns task list names and IDs.
+    Every user has at least one default task list."""
+    try:
+        lists = tasks_service.list_task_lists(max_results, account=account)
+        return {"task_lists": [tl.model_dump() for tl in lists], "count": len(lists)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def tasks_create_task_list(title: str, account: str = "default") -> dict:
+    """Create a new Google Tasks list with the given title."""
+    try:
+        return tasks_service.create_task_list(title, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def tasks_list_tasks(tasklist_id: str = "@default", max_results: int = 100, show_completed: bool = True, account: str = "default") -> dict:
+    """List tasks in a Google Tasks list. Use '@default' for the user's default task list.
+    Set show_completed=False to hide completed tasks."""
+    try:
+        tasks = tasks_service.list_tasks(tasklist_id, max_results, show_completed, account=account)
+        return {"tasks": [t.model_dump() for t in tasks], "count": len(tasks)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def tasks_create_task(title: str, tasklist_id: str = "@default", notes: str | None = None, due: str | None = None, account: str = "default") -> dict:
+    """Create a new task. Use '@default' for the default task list.
+    Optionally provide notes and a due date (RFC 3339 format, e.g. '2025-03-01T00:00:00Z')."""
+    try:
+        return tasks_service.create_task(tasklist_id, title, notes, due, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def tasks_update_task(tasklist_id: str, task_id: str, title: str | None = None, notes: str | None = None, status: str | None = None, due: str | None = None, account: str = "default") -> dict:
+    """Update an existing task. Only provided fields are changed.
+    Status must be 'needsAction' or 'completed'. Due date in RFC 3339 format."""
+    try:
+        return tasks_service.update_task(tasklist_id, task_id, title, notes, status, due, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def tasks_complete_task(tasklist_id: str, task_id: str, account: str = "default") -> dict:
+    """Mark a task as completed."""
+    try:
+        return tasks_service.complete_task(tasklist_id, task_id, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def tasks_delete_task(tasklist_id: str, task_id: str, account: str = "default") -> dict:
+    """Delete a task from a task list."""
+    try:
+        tasks_service.delete_task(tasklist_id, task_id, account=account)
+        return {"status": "deleted", "task_id": task_id}
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 

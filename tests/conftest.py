@@ -32,3 +32,8 @@ requires_slides = pytest.mark.skipif(
     not _is_authenticated("slides"),
     reason="Slides not authenticated — run /auth/slides/setup first",
 )
+
+requires_tasks = pytest.mark.skipif(
+    not _is_authenticated("tasks"),
+    reason="Tasks not authenticated — run /auth/tasks/setup first",
+)
