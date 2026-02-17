@@ -6,6 +6,7 @@ from brokenclaw.services import docs as docs_service
 from brokenclaw.services import drive as drive_service
 from brokenclaw.services import gmail as gmail_service
 from brokenclaw.services import sheets as sheets_service
+from brokenclaw.services import slides as slides_service
 
 mcp = FastMCP("Brokenclaw")
 
@@ -239,6 +240,58 @@ def docs_replace_text(document_id: str, find: str, replace_with: str, match_case
     Set match_case=False for case-insensitive matching."""
     try:
         return docs_service.replace_text(document_id, find, replace_with, match_case, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+# --- Slides tools ---
+
+@mcp.tool
+def slides_get_presentation(presentation_id: str, account: str = "default") -> dict:
+    """Get Google Slides presentation metadata: title, slide count, and URL.
+    You need the presentation ID from the URL: docs.google.com/presentation/d/{PRESENTATION_ID}/edit"""
+    try:
+        return slides_service.get_presentation(presentation_id, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slides_read_presentation(presentation_id: str, account: str = "default") -> dict:
+    """Read the text content from all slides in a Google Slides presentation.
+    Returns the title and a list of text strings, one per slide."""
+    try:
+        return slides_service.get_presentation_content(presentation_id, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slides_create_presentation(title: str, account: str = "default") -> dict:
+    """Create a new Google Slides presentation with the given title.
+    Returns the new presentation ID, title, slide count, and URL."""
+    try:
+        return slides_service.create_presentation(title, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slides_add_slide(presentation_id: str, layout: str = "BLANK", account: str = "default") -> dict:
+    """Add a new slide to a presentation. Layout options include BLANK, TITLE, TITLE_AND_BODY,
+    TITLE_AND_TWO_COLUMNS, TITLE_ONLY, SECTION_HEADER, etc. Defaults to BLANK."""
+    try:
+        return slides_service.add_slide(presentation_id, layout, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slides_replace_text(presentation_id: str, find: str, replace_with: str, match_case: bool = True, account: str = "default") -> dict:
+    """Find and replace text across all slides in a presentation. Replaces all occurrences of 'find' with 'replace_with'.
+    Set match_case=False for case-insensitive matching."""
+    try:
+        return slides_service.replace_text(presentation_id, find, replace_with, match_case, account=account).model_dump()
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 

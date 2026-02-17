@@ -27,3 +27,8 @@ requires_docs = pytest.mark.skipif(
     not _is_authenticated("docs"),
     reason="Docs not authenticated — run /auth/docs/setup first",
 )
+
+requires_slides = pytest.mark.skipif(
+    not _is_authenticated("slides"),
+    reason="Slides not authenticated — run /auth/slides/setup first",
+)
