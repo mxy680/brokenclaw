@@ -19,49 +19,54 @@ def _handle_mcp_error(e: Exception) -> dict:
 
 
 @mcp.tool
-def gmail_inbox(max_results: int = 20) -> dict:
-    """Get recent inbox messages. Returns a list of email messages with subject, sender, date, and snippet."""
+def gmail_inbox(max_results: int = 20, account: str = "default") -> dict:
+    """Get recent inbox messages. Returns a list of email messages with subject, sender, date, and snippet.
+    Use account parameter to specify which Gmail account (e.g. 'personal', 'work'). Defaults to 'default'."""
     try:
-        messages = gmail_service.get_inbox(max_results)
+        messages = gmail_service.get_inbox(max_results, account=account)
         return {"messages": [m.model_dump() for m in messages], "count": len(messages)}
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 
 
 @mcp.tool
-def gmail_search(query: str, max_results: int = 20) -> dict:
+def gmail_search(query: str, max_results: int = 20, account: str = "default") -> dict:
     """Search emails using Gmail query syntax (e.g. 'from:alice subject:meeting after:2024/01/01').
-    Returns matching messages with subject, sender, date, and snippet."""
+    Returns matching messages with subject, sender, date, and snippet.
+    Use account parameter to specify which Gmail account."""
     try:
-        messages = gmail_service.search_messages(query, max_results)
+        messages = gmail_service.search_messages(query, max_results, account=account)
         return {"messages": [m.model_dump() for m in messages], "count": len(messages)}
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 
 
 @mcp.tool
-def gmail_get_message(message_id: str) -> dict:
-    """Get the full content of a specific email by its message ID. Use this after gmail_inbox or gmail_search to read the full body."""
+def gmail_get_message(message_id: str, account: str = "default") -> dict:
+    """Get the full content of a specific email by its message ID.
+    Use this after gmail_inbox or gmail_search to read the full body."""
     try:
-        return gmail_service.get_message(message_id).model_dump()
+        return gmail_service.get_message(message_id, account=account).model_dump()
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 
 
 @mcp.tool
-def gmail_send(to: str, subject: str, body: str) -> dict:
-    """Send a new email. Provide recipient address, subject line, and plain text body."""
+def gmail_send(to: str, subject: str, body: str, account: str = "default") -> dict:
+    """Send a new email. Provide recipient address, subject line, and plain text body.
+    Use account parameter to send from a specific Gmail account."""
     try:
-        return gmail_service.send_message(to, subject, body).model_dump()
+        return gmail_service.send_message(to, subject, body, account=account).model_dump()
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 
 
 @mcp.tool
-def gmail_reply(message_id: str, body: str) -> dict:
-    """Reply to an existing email thread. Provide the message ID to reply to and the plain text reply body."""
+def gmail_reply(message_id: str, body: str, account: str = "default") -> dict:
+    """Reply to an existing email thread. Provide the message ID to reply to and the plain text reply body.
+    Use account parameter to reply from a specific Gmail account."""
     try:
-        return gmail_service.reply_to_message(message_id, body).model_dump()
+        return gmail_service.reply_to_message(message_id, body, account=account).model_dump()
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 
@@ -69,14 +74,18 @@ def gmail_reply(message_id: str, body: str) -> dict:
 @mcp.tool
 def brokenclaw_status() -> dict:
     """Check which integrations are authenticated and ready to use.
-    If an integration shows as not authenticated, instruct the user to visit the setup URL."""
+    Shows all authenticated Gmail accounts. If none are authenticated, instruct the user to visit the setup URL."""
     store = _get_token_store()
-    gmail_ok = store.has_valid_token("gmail")
+    accounts = store.list_gmail_accounts()
     return {
         "integrations": {
             "gmail": {
-                "authenticated": gmail_ok,
-                "message": "Ready" if gmail_ok else "Not authenticated — user should visit /auth/gmail/setup",
+                "authenticated_accounts": accounts,
+                "message": (
+                    f"{len(accounts)} account(s) ready: {', '.join(accounts)}"
+                    if accounts
+                    else "No accounts authenticated — user should visit /auth/gmail/setup"
+                ),
             }
         }
     }

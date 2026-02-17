@@ -9,14 +9,14 @@ from brokenclaw.exceptions import AuthenticationError, IntegrationError, RateLim
 from brokenclaw.models.gmail import GmailMessage
 
 
-def _get_gmail_service():
+def _get_gmail_service(account: str = "default"):
     try:
-        creds = get_gmail_credentials()
+        creds = get_gmail_credentials(account)
     except FileNotFoundError as e:
         raise AuthenticationError(str(e)) from e
     except Exception as e:
         raise AuthenticationError(
-            f"Failed to obtain Gmail credentials: {e}. Run gmail_auth_setup or visit /auth/gmail/setup."
+            f"Failed to obtain Gmail credentials: {e}. Visit /auth/gmail/setup?account={account}."
         ) from e
     return build("gmail", "v1", credentials=creds)
 
@@ -34,7 +34,6 @@ def _handle_api_error(e: HttpError):
 def _parse_message(msg: dict) -> GmailMessage:
     """Extract a GmailMessage from the Gmail API message resource."""
     headers = {h["name"].lower(): h["value"] for h in msg["payload"].get("headers", [])}
-    # Extract body text
     body = _extract_body(msg["payload"])
     return GmailMessage(
         id=msg["id"],
@@ -59,9 +58,9 @@ def _extract_body(payload: dict) -> str | None:
     return None
 
 
-def get_inbox(max_results: int = 20) -> list[GmailMessage]:
+def get_inbox(max_results: int = 20, account: str = "default") -> list[GmailMessage]:
     """Get recent inbox messages."""
-    service = _get_gmail_service()
+    service = _get_gmail_service(account)
     try:
         results = service.users().messages().list(
             userId="me", labelIds=["INBOX"], maxResults=max_results
@@ -77,9 +76,9 @@ def get_inbox(max_results: int = 20) -> list[GmailMessage]:
         _handle_api_error(e)
 
 
-def search_messages(query: str, max_results: int = 20) -> list[GmailMessage]:
+def search_messages(query: str, max_results: int = 20, account: str = "default") -> list[GmailMessage]:
     """Search messages using Gmail query syntax."""
-    service = _get_gmail_service()
+    service = _get_gmail_service(account)
     try:
         results = service.users().messages().list(
             userId="me", q=query, maxResults=max_results
@@ -95,9 +94,9 @@ def search_messages(query: str, max_results: int = 20) -> list[GmailMessage]:
         _handle_api_error(e)
 
 
-def get_message(message_id: str) -> GmailMessage:
+def get_message(message_id: str, account: str = "default") -> GmailMessage:
     """Get a single message by ID with full body."""
-    service = _get_gmail_service()
+    service = _get_gmail_service(account)
     try:
         msg = service.users().messages().get(
             userId="me", id=message_id, format="full"
@@ -107,9 +106,9 @@ def get_message(message_id: str) -> GmailMessage:
         _handle_api_error(e)
 
 
-def send_message(to: str, subject: str, body: str) -> GmailMessage:
+def send_message(to: str, subject: str, body: str, account: str = "default") -> GmailMessage:
     """Compose and send a new email."""
-    service = _get_gmail_service()
+    service = _get_gmail_service(account)
     mime = MIMEText(body)
     mime["to"] = to
     mime["subject"] = subject
@@ -126,9 +125,9 @@ def send_message(to: str, subject: str, body: str) -> GmailMessage:
         _handle_api_error(e)
 
 
-def reply_to_message(message_id: str, body: str) -> GmailMessage:
+def reply_to_message(message_id: str, body: str, account: str = "default") -> GmailMessage:
     """Reply to an existing message in its thread."""
-    service = _get_gmail_service()
+    service = _get_gmail_service(account)
     try:
         original = service.users().messages().get(
             userId="me", id=message_id, format="full"
