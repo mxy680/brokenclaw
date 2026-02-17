@@ -37,3 +37,8 @@ requires_tasks = pytest.mark.skipif(
     not _is_authenticated("tasks"),
     reason="Tasks not authenticated — run /auth/tasks/setup first",
 )
+
+requires_forms = pytest.mark.skipif(
+    not _is_authenticated("forms"),
+    reason="Forms not authenticated — run /auth/forms/setup first",
+)

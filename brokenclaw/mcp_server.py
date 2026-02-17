@@ -8,6 +8,7 @@ from brokenclaw.services import gmail as gmail_service
 from brokenclaw.services import sheets as sheets_service
 from brokenclaw.services import slides as slides_service
 from brokenclaw.services import tasks as tasks_service
+from brokenclaw.services import forms as forms_service
 
 mcp = FastMCP("Brokenclaw")
 
@@ -365,6 +366,68 @@ def tasks_delete_task(tasklist_id: str, task_id: str, account: str = "default") 
     try:
         tasks_service.delete_task(tasklist_id, task_id, account=account)
         return {"status": "deleted", "task_id": task_id}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+# --- Forms tools ---
+
+@mcp.tool
+def forms_get_form(form_id: str, account: str = "default") -> dict:
+    """Get Google Form metadata: title, description, and responder URL.
+    You need the form ID from the URL: docs.google.com/forms/d/{FORM_ID}/edit"""
+    try:
+        return forms_service.get_form(form_id, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def forms_get_form_detail(form_id: str, account: str = "default") -> dict:
+    """Get a Google Form with all its questions. Returns form metadata plus a list of questions
+    with their types (TEXT, PARAGRAPH, RADIO, CHECKBOX, DROP_DOWN, SCALE, etc.)."""
+    try:
+        return forms_service.get_form_detail(form_id, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def forms_create_form(title: str, account: str = "default") -> dict:
+    """Create a new empty Google Form with the given title.
+    Returns the form ID, title, responder URI (share this for people to fill out), and edit URL."""
+    try:
+        return forms_service.create_form(title, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def forms_add_question(form_id: str, title: str, question_type: str = "TEXT", options: list[str] | None = None, required: bool = False, account: str = "default") -> dict:
+    """Add a question to a Google Form. Types: TEXT (short answer), PARAGRAPH (long answer),
+    RADIO (multiple choice), CHECKBOX (checkboxes), DROP_DOWN (dropdown).
+    For RADIO/CHECKBOX/DROP_DOWN, provide options as a list of strings."""
+    try:
+        return forms_service.add_question(form_id, title, question_type, options, required, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def forms_list_responses(form_id: str, max_results: int = 100, account: str = "default") -> dict:
+    """List all responses submitted to a Google Form. Returns response IDs, timestamps, and answers."""
+    try:
+        responses = forms_service.list_responses(form_id, max_results, account=account)
+        return {"responses": [r.model_dump() for r in responses], "count": len(responses)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def forms_get_response(form_id: str, response_id: str, account: str = "default") -> dict:
+    """Get a single form response by its response ID. Returns the full answers for that submission."""
+    try:
+        return forms_service.get_response(form_id, response_id, account=account).model_dump()
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 

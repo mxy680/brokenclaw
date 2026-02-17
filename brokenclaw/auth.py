@@ -35,6 +35,10 @@ INTEGRATION_SCOPES = {
     "tasks": [
         "https://www.googleapis.com/auth/tasks",
     ],
+    "forms": [
+        "https://www.googleapis.com/auth/forms.body",
+        "https://www.googleapis.com/auth/forms.responses.readonly",
+    ],
 }
 
 SUPPORTED_INTEGRATIONS = set(INTEGRATION_SCOPES.keys())
@@ -148,6 +152,10 @@ def get_slides_credentials(account: str = "default") -> Credentials:
 
 def get_tasks_credentials(account: str = "default") -> Credentials:
     return _get_credentials("tasks", account)
+
+
+def get_forms_credentials(account: str = "default") -> Credentials:
+    return _get_credentials("forms", account)
 
 
 # --- Auth router ---
