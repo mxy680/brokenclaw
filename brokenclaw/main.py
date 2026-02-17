@@ -6,11 +6,11 @@ from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Mount
 
-from brokenclaw.auth import router as auth_router
+from brokenclaw.auth import SUPPORTED_INTEGRATIONS, router as auth_router
 from brokenclaw.config import get_settings
 from brokenclaw.exceptions import AuthenticationError, IntegrationError, RateLimitError
 from brokenclaw.mcp_server import mcp
-from brokenclaw.models.common import StatusResponse
+from brokenclaw.routers.drive import router as drive_router
 from brokenclaw.routers.gmail import router as gmail_router
 
 
@@ -32,19 +32,22 @@ class LocalhostOnlyMiddleware(BaseHTTPMiddleware):
 api = FastAPI(title="Brokenclaw", version="0.1.0")
 api.include_router(auth_router)
 api.include_router(gmail_router)
+api.include_router(drive_router)
 
 
 @api.get("/api/status")
-def api_status() -> StatusResponse:
+def api_status() -> dict:
     from brokenclaw.auth import _get_token_store
 
     store = _get_token_store()
-    gmail_ok = store.has_valid_token("gmail")
-    return StatusResponse(
-        integration="gmail",
-        authenticated=gmail_ok,
-        message="Ready" if gmail_ok else "Not authenticated — visit /auth/gmail/setup",
-    )
+    statuses = {}
+    for name in SUPPORTED_INTEGRATIONS:
+        accounts = store.list_accounts(name)
+        statuses[name] = {
+            "authenticated_accounts": accounts,
+            "ready": len(accounts) > 0,
+        }
+    return {"integrations": statuses}
 
 
 # --- Exception handlers ---

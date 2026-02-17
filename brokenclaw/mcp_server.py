@@ -1,7 +1,8 @@
 from fastmcp import FastMCP
 
-from brokenclaw.auth import _get_token_store
+from brokenclaw.auth import SUPPORTED_INTEGRATIONS, _get_token_store
 from brokenclaw.exceptions import AuthenticationError, IntegrationError, RateLimitError
+from brokenclaw.services import drive as drive_service
 from brokenclaw.services import gmail as gmail_service
 
 mcp = FastMCP("Brokenclaw")
@@ -10,13 +11,15 @@ mcp = FastMCP("Brokenclaw")
 def _handle_mcp_error(e: Exception) -> dict:
     """Convert exceptions to agent-friendly error dicts."""
     if isinstance(e, AuthenticationError):
-        return {"error": "auth_error", "message": str(e), "action": "Ask user to visit /auth/gmail/setup"}
+        return {"error": "auth_error", "message": str(e), "action": "Ask user to visit the setup URL shown in the message"}
     if isinstance(e, RateLimitError):
         return {"error": "rate_limit", "message": str(e), "action": "Wait a moment and retry"}
     if isinstance(e, IntegrationError):
         return {"error": "integration_error", "message": str(e)}
     return {"error": "unknown_error", "message": str(e)}
 
+
+# --- Gmail tools ---
 
 @mcp.tool
 def gmail_inbox(max_results: int = 20, account: str = "default") -> dict:
@@ -71,21 +74,85 @@ def gmail_reply(message_id: str, body: str, account: str = "default") -> dict:
         return _handle_mcp_error(e)
 
 
+# --- Drive tools ---
+
+@mcp.tool
+def drive_list_files(max_results: int = 20, account: str = "default") -> dict:
+    """List recent files in Google Drive, ordered by last modified.
+    Returns file name, ID, type, and last modified time."""
+    try:
+        files = drive_service.list_files(max_results, account=account)
+        return {"files": [f.model_dump() for f in files], "count": len(files)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def drive_search(query: str, max_results: int = 20, account: str = "default") -> dict:
+    """Search files in Google Drive using Drive query syntax.
+    Examples: "name contains 'report'", "mimeType = 'application/pdf'", "modifiedTime > '2024-01-01'".
+    See https://developers.google.com/drive/api/guides/search-files for full syntax."""
+    try:
+        files = drive_service.search_files(query, max_results, account=account)
+        return {"files": [f.model_dump() for f in files], "count": len(files)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def drive_get_file(file_id: str, account: str = "default") -> dict:
+    """Get metadata for a specific file by its ID (name, size, type, dates, link)."""
+    try:
+        return drive_service.get_file(file_id, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def drive_read_file(file_id: str, account: str = "default") -> dict:
+    """Read the text content of a file. Works with Google Docs (exported as text), Sheets (exported as CSV), and plain text files.
+    Use drive_list_files or drive_search first to find the file ID."""
+    try:
+        return drive_service.get_file_content(file_id, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def drive_create_file(name: str, content: str, mime_type: str = "text/plain", parent_folder_id: str | None = None, account: str = "default") -> dict:
+    """Create a new file in Google Drive. Provide file name and text content.
+    Optionally specify mime_type and parent_folder_id."""
+    try:
+        return drive_service.create_file(name, content, mime_type, parent_folder_id, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def drive_create_folder(name: str, parent_folder_id: str | None = None, account: str = "default") -> dict:
+    """Create a new folder in Google Drive. Optionally place it inside an existing folder."""
+    try:
+        return drive_service.create_folder(name, parent_folder_id, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+# --- Status tool ---
+
 @mcp.tool
 def brokenclaw_status() -> dict:
     """Check which integrations are authenticated and ready to use.
-    Shows all authenticated Gmail accounts. If none are authenticated, instruct the user to visit the setup URL."""
+    Shows all authenticated accounts per integration."""
     store = _get_token_store()
-    accounts = store.list_gmail_accounts()
-    return {
-        "integrations": {
-            "gmail": {
-                "authenticated_accounts": accounts,
-                "message": (
-                    f"{len(accounts)} account(s) ready: {', '.join(accounts)}"
-                    if accounts
-                    else "No accounts authenticated — user should visit /auth/gmail/setup"
-                ),
-            }
+    integrations = {}
+    for name in SUPPORTED_INTEGRATIONS:
+        accounts = store.list_accounts(name)
+        integrations[name] = {
+            "authenticated_accounts": accounts,
+            "message": (
+                f"{len(accounts)} account(s) ready: {', '.join(accounts)}"
+                if accounts
+                else f"No accounts authenticated — user should visit /auth/{name}/setup"
+            ),
         }
-    }
+    return {"integrations": integrations}

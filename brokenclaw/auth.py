@@ -14,22 +14,32 @@ from google_auth_oauthlib.flow import Flow
 from brokenclaw.config import get_settings
 from brokenclaw.models.common import StatusResponse
 
-GMAIL_SCOPES = [
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.modify",
-]
+INTEGRATION_SCOPES = {
+    "gmail": [
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.send",
+        "https://www.googleapis.com/auth/gmail.modify",
+    ],
+    "drive": [
+        "https://www.googleapis.com/auth/drive",
+    ],
+}
 
-REDIRECT_URI = "http://localhost:8000/auth/gmail/callback"
+SUPPORTED_INTEGRATIONS = set(INTEGRATION_SCOPES.keys())
 
 
-def _token_key(account: str) -> str:
+def _token_key(integration: str, account: str) -> str:
     """Build token store key: 'gmail' for default, 'gmail:name' otherwise."""
-    return "gmail" if account == "default" else f"gmail:{account}"
+    return integration if account == "default" else f"{integration}:{account}"
+
+
+def _redirect_uri(integration: str) -> str:
+    settings = get_settings()
+    return f"http://localhost:{settings.port}/auth/{integration}/callback"
 
 
 class TokenStore:
-    """Reads/writes OAuth tokens to a local JSON file, keyed by integration name."""
+    """Reads/writes OAuth tokens to a local JSON file, keyed by integration:account."""
 
     def __init__(self, path: Path):
         self.path = path
@@ -51,17 +61,17 @@ class TokenStore:
         token_data = self.get(key)
         if not token_data:
             return False
-        creds = Credentials.from_authorized_user_info(token_data, GMAIL_SCOPES)
+        creds = Credentials.from_authorized_user_info(token_data)
         return creds.valid or (creds.expired and creds.refresh_token)
 
-    def list_gmail_accounts(self) -> list[str]:
-        """Return all authenticated Gmail account names."""
+    def list_accounts(self, integration: str) -> list[str]:
+        """Return all authenticated account names for an integration."""
         accounts = []
         for key in self._read_all():
-            if key == "gmail":
+            if key == integration:
                 accounts.append("default")
-            elif key.startswith("gmail:"):
-                accounts.append(key.removeprefix("gmail:"))
+            elif key.startswith(f"{integration}:"):
+                accounts.append(key.removeprefix(f"{integration}:"))
         return accounts
 
 
@@ -69,7 +79,7 @@ def _get_token_store() -> TokenStore:
     return TokenStore(get_settings().token_file)
 
 
-def _create_flow() -> Flow:
+def _create_flow(integration: str) -> Flow:
     settings = get_settings()
     if not settings.client_secret_file.exists():
         raise FileNotFoundError(
@@ -78,19 +88,19 @@ def _create_flow() -> Flow:
         )
     return Flow.from_client_secrets_file(
         str(settings.client_secret_file),
-        scopes=GMAIL_SCOPES,
-        redirect_uri=REDIRECT_URI,
+        scopes=INTEGRATION_SCOPES[integration],
+        redirect_uri=_redirect_uri(integration),
     )
 
 
-def get_gmail_credentials(account: str = "default") -> Credentials:
-    """Load Gmail credentials from token store. Refreshes if expired, raises if missing."""
+def _get_credentials(integration: str, account: str = "default") -> Credentials:
+    """Load credentials from token store. Refreshes if expired, raises if missing."""
     store = _get_token_store()
-    key = _token_key(account)
+    key = _token_key(integration, account)
     token_data = store.get(key)
 
     if token_data:
-        creds = Credentials.from_authorized_user_info(token_data, GMAIL_SCOPES)
+        creds = Credentials.from_authorized_user_info(token_data, INTEGRATION_SCOPES[integration])
         if creds.valid:
             return creds
         if creds.expired and creds.refresh_token:
@@ -100,8 +110,16 @@ def get_gmail_credentials(account: str = "default") -> Credentials:
 
     label = f" (account={account})" if account != "default" else ""
     raise RuntimeError(
-        f"Gmail not authenticated{label}. Visit /auth/gmail/setup?account={account} to connect."
+        f"{integration} not authenticated{label}. Visit /auth/{integration}/setup?account={account} to connect."
     )
+
+
+def get_gmail_credentials(account: str = "default") -> Credentials:
+    return _get_credentials("gmail", account)
+
+
+def get_drive_credentials(account: str = "default") -> Credentials:
+    return _get_credentials("drive", account)
 
 
 # --- Auth router ---
@@ -109,57 +127,63 @@ def get_gmail_credentials(account: str = "default") -> Credentials:
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.get("/gmail/setup")
-def gmail_auth_setup(account: str = "default"):
+@router.get("/{integration}/setup")
+def auth_setup(integration: str, account: str = "default"):
     """Redirect to Google OAuth consent screen. Use ?account=name for multiple accounts."""
-    flow = _create_flow()
+    if integration not in SUPPORTED_INTEGRATIONS:
+        return StatusResponse(integration=integration, authenticated=False, message=f"Unknown integration: {integration}")
+    flow = _create_flow(integration)
+    # Encode integration:account in state so callback knows where to store the token
+    state = f"{integration}:{account}"
     auth_url, _ = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
         prompt="consent",
-        state=account,  # pass account name through OAuth state
+        state=state,
     )
     return RedirectResponse(auth_url)
 
 
-@router.get("/gmail/callback")
-def gmail_auth_callback(code: str, state: str = "default"):
+@router.get("/{integration}/callback")
+def auth_callback(integration: str, code: str, state: str = ""):
     """Handle OAuth callback from Google, exchange code for tokens."""
-    account = state
-    flow = _create_flow()
+    # Parse state to get integration and account
+    if ":" in state:
+        _, account = state.split(":", 1)
+    else:
+        account = "default"
+    if integration not in SUPPORTED_INTEGRATIONS:
+        return StatusResponse(integration=integration, authenticated=False, message=f"Unknown integration: {integration}")
+    flow = _create_flow(integration)
     flow.fetch_token(code=code)
     creds = flow.credentials
     store = _get_token_store()
-    store.save(_token_key(account), json.loads(creds.to_json()))
+    store.save(_token_key(integration, account), json.loads(creds.to_json()))
     return StatusResponse(
-        integration="gmail",
+        integration=integration,
         authenticated=True,
-        message=f"Gmail account '{account}' authenticated successfully. You can close this tab.",
+        message=f"{integration} account '{account}' authenticated successfully. You can close this tab.",
     )
 
 
-@router.get("/gmail/accounts")
-def gmail_accounts() -> dict:
-    """List all authenticated Gmail accounts."""
+@router.get("/{integration}/accounts")
+def list_accounts(integration: str) -> dict:
+    """List all authenticated accounts for an integration."""
     store = _get_token_store()
-    return {"accounts": store.list_gmail_accounts()}
+    return {"accounts": store.list_accounts(integration)}
 
 
 @router.get("/{integration}/status")
 def auth_status(integration: str, account: str = "default") -> StatusResponse:
     """Check whether an integration has a valid token."""
-    if integration != "gmail":
-        return StatusResponse(
-            integration=integration,
-            authenticated=False,
-            message=f"Unknown integration: {integration}",
-        )
+    if integration not in SUPPORTED_INTEGRATIONS:
+        return StatusResponse(integration=integration, authenticated=False, message=f"Unknown integration: {integration}")
     store = _get_token_store()
-    key = _token_key(account)
+    key = _token_key(integration, account)
     valid = store.has_valid_token(key)
     label = f" (account={account})" if account != "default" else ""
     return StatusResponse(
-        integration="gmail",
+        integration=integration,
         authenticated=valid,
-        message=f"Authenticated{label}" if valid else f"Not authenticated{label} — visit /auth/gmail/setup?account={account}",
+        message=f"Authenticated{label}" if valid else f"Not authenticated{label} — visit /auth/{integration}/setup?account={account}",
     )
