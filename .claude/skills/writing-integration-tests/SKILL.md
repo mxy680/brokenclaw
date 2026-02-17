@@ -1,109 +1,137 @@
 ---
 name: writing-integration-tests
-description: Use when adding or modifying an integration (Gmail, Drive, etc.) and tests are needed. Use when writing tests for services that call external APIs, REST routers, or MCP tools.
+description: Use when adding or modifying an integration (Gmail, Drive, Sheets, etc.) and tests are needed. Use when writing tests for services that call real external APIs like Google.
 ---
 
 # Writing Integration Tests
 
 ## Overview
 
-Test each integration at three layers: **service** (business logic with mocked API), **router** (HTTP endpoints via FastAPI TestClient), and **MCP tools** (tool functions with mocked service). Every external API call must be mocked — tests must never hit real Google APIs.
+Test each integration against the **real API**. Tests must authenticate with stored credentials and hit live Google endpoints. If credentials aren't available, tests skip gracefully. Write operations must clean up after themselves.
 
 ## Test Structure
 
 ```
 tests/
-  conftest.py                  # Shared fixtures (mock credentials, token store, test client)
-  test_services_<integration>.py   # Service layer tests
-  test_routers_<integration>.py    # REST endpoint tests
-  test_mcp_<integration>.py        # MCP tool tests
+  conftest.py                  # Skip markers based on auth status
+  test_<integration>.py        # Real API tests per integration
 ```
 
-## Layer-by-Layer Pattern
+One test file per integration. No mocks, no fakes — real API calls.
 
-### 1. Service Layer Tests (`test_services_*.py`)
+## Core Principles
 
-Mock the Google API client. Patch `googleapiclient.discovery.build` to return a mock service object that returns canned responses.
+1. **Real API calls only** — tests hit live Google APIs with stored OAuth tokens
+2. **Skip if not authenticated** — use `pytest.mark.skipif` so unauthenticated integrations don't fail
+3. **Clean up write operations** — delete files, trash messages, remove spreadsheets after tests
+4. **Use pytest fixtures** — `autouse=True` fixtures for setup/teardown of resources
+5. **Validate Pydantic models** — assert returned objects are correct model types with expected fields
 
-**What to test:**
-- Each service function returns correct Pydantic model
-- Parsing logic handles all message/file fields correctly
-- Missing optional fields don't crash (e.g. no body, no parents)
-- `HttpError` with status 401 → `AuthenticationError`
-- `HttpError` with status 429 → `RateLimitError`
-- `HttpError` with other status → `IntegrationError`
-- Credentials missing → `AuthenticationError`
+## Skip Markers (`conftest.py`)
 
-**Mock pattern:**
 ```python
-@pytest.fixture
-def mock_gmail_service(mocker):
-    mock_svc = MagicMock()
-    mocker.patch("brokenclaw.services.gmail.get_gmail_credentials")
-    mocker.patch("brokenclaw.services.gmail.build", return_value=mock_svc)
-    return mock_svc
+import pytest
+from brokenclaw.auth import _get_token_store
 
-def test_get_inbox(mock_gmail_service):
-    # Set up: configure mock_gmail_service.users().messages().list().execute()
-    # Act: call service function
-    # Assert: check returned Pydantic models
+def _is_authenticated(integration: str) -> bool:
+    store = _get_token_store()
+    return store.has_valid_token(integration)
+
+requires_gmail = pytest.mark.skipif(
+    not _is_authenticated("gmail"),
+    reason="Gmail not authenticated — run /auth/gmail/setup first",
+)
 ```
 
-### 2. Router Tests (`test_routers_*.py`)
+Create one `requires_*` marker per integration. Apply as class decorator.
 
-Use FastAPI `TestClient`. Mock the entire service module so router tests only verify HTTP status codes, response shapes, and query parameter wiring.
+## Test Patterns
 
-**What to test:**
-- Each endpoint returns 200 with correct JSON shape
-- Query parameters are forwarded to service (max_results, account, query)
-- Service exceptions map to correct HTTP status codes (401, 429, 500)
+### Read-only tests
 
-**Mock pattern:**
+Query the real API and validate the shape of results:
+
 ```python
-@pytest.fixture
-def client(mocker):
-    mocker.patch("brokenclaw.routers.gmail.gmail_service")
-    from brokenclaw.main import api
-    return TestClient(api)
+@requires_drive
+class TestListFiles:
+    def test_returns_list_of_files(self):
+        files = drive_service.list_files(max_results=3)
+        assert isinstance(files, list)
+        assert len(files) <= 3
+        if files:
+            assert isinstance(files[0], DriveFile)
+            assert files[0].id
 ```
 
-### 3. MCP Tool Tests (`test_mcp_*.py`)
+### Write tests with cleanup
 
-Call tool functions directly. Mock the service module. Verify tools return dicts (not Pydantic models) and handle errors by returning structured error dicts (not raising).
+Create a resource, validate it, then delete it — always clean up:
 
-**What to test:**
-- Each tool returns a dict with expected keys
-- On service exception, tool returns `{"error": ..., "message": ...}` (not raises)
-- Account parameter is forwarded to service
+```python
+@requires_drive
+class TestCreateAndReadFile:
+    def test_create_read_delete_file(self):
+        created = drive_service.create_file(
+            name="brokenclaw_test_file.txt",
+            content="Hello from tests!",
+            mime_type="text/plain",
+        )
+        assert isinstance(created, DriveFile)
+        try:
+            content = drive_service.get_file_content(created.id)
+            assert content.content == "Hello from tests!"
+        finally:
+            _delete_file(created.id)
+```
 
-## Fixtures to Share (`conftest.py`)
+Use `try/finally` or `pytest.fixture(autouse=True)` with `yield` for cleanup.
 
-- `mock_credentials` — patches `get_*_credentials` to return a MagicMock
-- `mock_token_store` — patches `_get_token_store` with a fake store
-- Canned API response dicts for Gmail messages, Drive files
+### Fixture-based cleanup
+
+For tests that share a resource across multiple test methods:
+
+```python
+@requires_sheets
+class TestReadWriteAppend:
+    @pytest.fixture(autouse=True)
+    def setup_spreadsheet(self):
+        self.spreadsheet = sheets_service.create_spreadsheet(
+            title="brokenclaw_test_rw", sheet_names=["TestSheet"],
+        )
+        yield
+        _delete_spreadsheet(self.spreadsheet.id)
+```
+
+## Cleanup Helpers
+
+Each integration needs a cleanup function using the lowest-level API:
+
+- **Gmail**: `service.users().messages().trash(userId="me", id=msg_id).execute()`
+- **Drive**: `service.files().delete(fileId=file_id).execute()`
+- **Sheets**: Delete via Drive API (Sheets API can't delete spreadsheets)
 
 ## Checklist Per Integration
 
-- [ ] Service tests: happy path for each function
-- [ ] Service tests: error paths (401, 429, generic HttpError)
-- [ ] Service tests: edge cases (empty results, missing fields)
-- [ ] Router tests: each endpoint returns correct shape
-- [ ] Router tests: query params forwarded correctly
-- [ ] Router tests: exception → HTTP status mapping
-- [ ] MCP tests: each tool returns dict
-- [ ] MCP tests: errors return structured error dict (no raise)
-- [ ] All mocks prevent real API calls (no network in tests)
+- [ ] Skip marker in `conftest.py` checking auth status
+- [ ] Read tests: validate return types and field presence
+- [ ] Read tests: respect `max_results` parameter
+- [ ] Search tests: both matching and non-matching queries
+- [ ] Write tests: create, validate, clean up
+- [ ] All write operations cleaned up in `finally` or fixture teardown
+- [ ] Prefix test resource names with `brokenclaw_test_` for easy identification
 
 ## Running Tests
 
 ```bash
-pytest tests/ -v
+.venv/bin/python -m pytest tests/ -v
 ```
+
+Unauthenticated integrations will show as SKIPPED, not FAILED.
 
 ## Common Mistakes
 
-- Forgetting to mock `build()` — test accidentally calls Google API
-- Testing router with real service — should mock service module
-- Asserting on MCP tool raising exceptions — tools should catch and return error dicts
-- Not testing the `account` parameter forwarding
-- Calling MCP tools directly — `@mcp.tool` wraps functions in `FunctionTool` objects; use `tool_name.fn()` to call the underlying function in tests
+- Not cleaning up created resources — pollutes the real account
+- Using `maxResults=0` — Gmail API rejects this, use `maxResults=1` instead
+- Importing from `tests.conftest` — use `from conftest import` (pytest handles it)
+- Forgetting `try/finally` around write test assertions — cleanup won't run on failure
+- Not checking if inbox is empty before fetching by ID — use `pytest.skip("Inbox is empty")`

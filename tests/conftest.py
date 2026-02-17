@@ -1,90 +1,24 @@
 import pytest
-from unittest.mock import MagicMock
 
-from fastapi.testclient import TestClient
-
-
-# --- Canned API responses ---
-
-GMAIL_API_MESSAGE = {
-    "id": "msg123",
-    "threadId": "thread456",
-    "snippet": "Hey, just checking in...",
-    "payload": {
-        "headers": [
-            {"name": "Subject", "value": "Hello"},
-            {"name": "From", "value": "alice@example.com"},
-            {"name": "To", "value": "bob@example.com"},
-            {"name": "Date", "value": "Mon, 1 Jan 2025 12:00:00 -0500"},
-            {"name": "Message-ID", "value": "<abc@example.com>"},
-        ],
-        "mimeType": "text/plain",
-        "body": {
-            "data": "SGVsbG8gd29ybGQ=",  # base64("Hello world")
-        },
-    },
-}
-
-GMAIL_API_LIST = {
-    "messages": [{"id": "msg123", "threadId": "thread456"}],
-}
-
-GMAIL_API_SEND = {"id": "sent789", "threadId": "thread456"}
-
-DRIVE_API_FILE = {
-    "id": "file123",
-    "name": "report.txt",
-    "mimeType": "text/plain",
-    "size": "1024",
-    "createdTime": "2025-01-01T00:00:00Z",
-    "modifiedTime": "2025-01-02T00:00:00Z",
-    "parents": ["folder789"],
-    "webViewLink": "https://drive.google.com/file/d/file123/view",
-}
-
-DRIVE_API_LIST = {
-    "files": [DRIVE_API_FILE],
-}
+from brokenclaw.auth import _get_token_store
 
 
-@pytest.fixture
-def mock_gmail_credentials(mocker):
-    return mocker.patch("brokenclaw.services.gmail.get_gmail_credentials", return_value=MagicMock())
+def _is_authenticated(integration: str) -> bool:
+    store = _get_token_store()
+    return store.has_valid_token(integration)
 
 
-@pytest.fixture
-def mock_gmail_build(mocker):
-    mock_svc = MagicMock()
-    mocker.patch("brokenclaw.services.gmail.build", return_value=mock_svc)
-    return mock_svc
+requires_gmail = pytest.mark.skipif(
+    not _is_authenticated("gmail"),
+    reason="Gmail not authenticated — run /auth/gmail/setup first",
+)
 
+requires_drive = pytest.mark.skipif(
+    not _is_authenticated("drive"),
+    reason="Drive not authenticated — run /auth/drive/setup first",
+)
 
-@pytest.fixture
-def mock_gmail_service(mock_gmail_credentials, mock_gmail_build):
-    """Fully mocked Gmail API service."""
-    return mock_gmail_build
-
-
-@pytest.fixture
-def mock_drive_credentials(mocker):
-    return mocker.patch("brokenclaw.services.drive.get_drive_credentials", return_value=MagicMock())
-
-
-@pytest.fixture
-def mock_drive_build(mocker):
-    mock_svc = MagicMock()
-    mocker.patch("brokenclaw.services.drive.build", return_value=mock_svc)
-    return mock_svc
-
-
-@pytest.fixture
-def mock_drive_service(mock_drive_credentials, mock_drive_build):
-    """Fully mocked Drive API service."""
-    return mock_drive_build
-
-
-@pytest.fixture
-def api_client():
-    """FastAPI TestClient for router tests."""
-    from brokenclaw.main import api
-    return TestClient(api)
+requires_sheets = pytest.mark.skipif(
+    not _is_authenticated("sheets"),
+    reason="Sheets not authenticated — run /auth/sheets/setup first",
+)
