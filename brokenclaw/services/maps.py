@@ -3,6 +3,8 @@ import requests
 from brokenclaw.config import get_settings
 from brokenclaw.exceptions import AuthenticationError, IntegrationError, RateLimitError
 from brokenclaw.models.maps import (
+    CurrentWeather,
+    DailyForecast,
     DirectionsRoute,
     DirectionsStep,
     DistanceMatrixEntry,
@@ -10,9 +12,12 @@ from brokenclaw.models.maps import (
     LatLng,
     PlaceDetail,
     PlaceResult,
+    TimezoneResult,
+    WindInfo,
 )
 
 MAPS_BASE = "https://maps.googleapis.com/maps/api"
+WEATHER_BASE = "https://weather.googleapis.com/v1"
 
 
 def _get_api_key() -> str:
@@ -199,3 +204,155 @@ def distance_matrix(
                 status=element.get("status", "UNKNOWN"),
             ))
     return entries
+
+
+def _handle_weather_response(resp: requests.Response) -> dict:
+    """Handle Weather API responses (different error format from Maps)."""
+    if resp.status_code == 429:
+        raise RateLimitError("Weather API rate limit exceeded. Try again shortly.")
+    if resp.status_code in (401, 403):
+        raise AuthenticationError("Weather API key is invalid or restricted.")
+    if resp.status_code != 200:
+        data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+        error = data.get("error", {})
+        raise IntegrationError(
+            f"Weather API error {resp.status_code}: {error.get('message', resp.text)}"
+        )
+    return resp.json()
+
+
+def _format_temp(temp: dict | None) -> str | None:
+    """Format a temperature object like {'degrees': 72, 'unit': 'FAHRENHEIT'}."""
+    if not temp:
+        return None
+    degrees = temp.get("degrees")
+    if degrees is None:
+        return None
+    unit = temp.get("unit", "")
+    symbol = "F" if "FAHRENHEIT" in unit else "C" if "CELSIUS" in unit else unit
+    return f"{degrees}{symbol}"
+
+
+def _format_speed(speed: dict | None) -> str | None:
+    """Format a speed object like {'value': 10, 'unit': 'MILES_PER_HOUR'}."""
+    if not speed:
+        return None
+    value = speed.get("value")
+    if value is None:
+        return None
+    unit = speed.get("unit", "")
+    if "MILES" in unit:
+        return f"{value} mph"
+    if "KILOMETERS" in unit:
+        return f"{value} km/h"
+    return f"{value} {unit}"
+
+
+def _format_distance(dist: dict | None) -> str | None:
+    """Format a distance object."""
+    if not dist:
+        return None
+    value = dist.get("value")
+    if value is None:
+        return None
+    unit = dist.get("unit", "")
+    if "MILES" in unit:
+        return f"{value} mi"
+    if "KILOMETERS" in unit:
+        return f"{value} km"
+    return f"{value} {unit}"
+
+
+def get_current_weather(lat: float, lng: float, units: str = "IMPERIAL") -> CurrentWeather:
+    """Get current weather conditions at a location."""
+    resp = requests.get(
+        f"{WEATHER_BASE}/currentConditions:lookup",
+        params={
+            "key": _get_api_key(),
+            "location.latitude": lat,
+            "location.longitude": lng,
+            "unitsSystem": units,
+        },
+    )
+    data = _handle_weather_response(resp)
+    wind_data = data.get("wind", {})
+    wind = WindInfo(
+        speed=_format_speed(wind_data.get("speed")),
+        direction=wind_data.get("direction", {}).get("cardinal"),
+        gust=_format_speed(wind_data.get("gust")),
+    )
+    return CurrentWeather(
+        temperature=_format_temp(data.get("temperature")),
+        feels_like=_format_temp(data.get("feelsLikeTemperature")),
+        humidity=data.get("relativeHumidity"),
+        description=data.get("weatherCondition", {}).get("description", {}).get("text"),
+        wind=wind,
+        uv_index=data.get("uvIndex"),
+        visibility=_format_distance(data.get("visibility")),
+        cloud_cover=data.get("cloudCover"),
+        is_daytime=data.get("isDaytime"),
+        time_zone=data.get("timeZone", {}).get("id") if isinstance(data.get("timeZone"), dict) else data.get("timeZone"),
+    )
+
+
+def get_daily_forecast(lat: float, lng: float, days: int = 5, units: str = "IMPERIAL") -> list[DailyForecast]:
+    """Get daily weather forecast for up to 10 days."""
+    resp = requests.get(
+        f"{WEATHER_BASE}/forecast/days:lookup",
+        params={
+            "key": _get_api_key(),
+            "location.latitude": lat,
+            "location.longitude": lng,
+            "days": min(days, 10),
+            "unitsSystem": units,
+        },
+    )
+    data = _handle_weather_response(resp)
+    forecasts = []
+    for day in data.get("forecastDays", []):
+        interval = day.get("daytimeForecast", {})
+        nighttime = day.get("nighttimeForecast", {})
+        # displayDate is {year, month, day}
+        dd = day.get("displayDate", {})
+        if isinstance(dd, dict):
+            date_str = f"{dd.get('year', '')}-{dd.get('month', 0):02d}-{dd.get('day', 0):02d}"
+        else:
+            date_str = str(dd)
+        # description is {text, languageCode}
+        desc = interval.get("weatherCondition", {}).get("description") \
+            or nighttime.get("weatherCondition", {}).get("description")
+        if isinstance(desc, dict):
+            desc = desc.get("text", "")
+        # precipitation.probability is {percent, type}
+        precip = interval.get("precipitation", {}).get("probability")
+        if isinstance(precip, dict):
+            precip = precip.get("percent")
+        forecasts.append(DailyForecast(
+            date=date_str,
+            high_temperature=_format_temp(day.get("maxTemperature")),
+            low_temperature=_format_temp(day.get("minTemperature")),
+            description=desc,
+            precipitation_probability=precip,
+        ))
+    return forecasts
+
+
+def get_timezone(lat: float, lng: float) -> TimezoneResult:
+    """Get timezone information for a location."""
+    import time
+    timestamp = int(time.time())
+    resp = requests.get(
+        f"{MAPS_BASE}/timezone/json",
+        params={
+            "location": f"{lat},{lng}",
+            "timestamp": timestamp,
+            "key": _get_api_key(),
+        },
+    )
+    data = _handle_response(resp)
+    return TimezoneResult(
+        time_zone_id=data.get("timeZoneId", ""),
+        time_zone_name=data.get("timeZoneName", ""),
+        raw_offset=data.get("rawOffset", 0),
+        dst_offset=data.get("dstOffset", 0),
+    )

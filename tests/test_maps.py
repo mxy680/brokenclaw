@@ -2,11 +2,14 @@ import pytest
 
 from brokenclaw.config import get_settings
 from brokenclaw.models.maps import (
+    CurrentWeather,
+    DailyForecast,
     DirectionsRoute,
     DistanceMatrixEntry,
     GeocodeResult,
     PlaceDetail,
     PlaceResult,
+    TimezoneResult,
 )
 from brokenclaw.services import maps as maps_service
 
@@ -81,3 +84,34 @@ class TestDistanceMatrix:
             assert entry.status == "OK"
             assert entry.distance
             assert entry.duration
+
+
+@requires_maps
+class TestCurrentWeather:
+    def test_current_weather(self):
+        # New York City coordinates
+        weather = maps_service.get_current_weather(40.7128, -74.0060)
+        assert isinstance(weather, CurrentWeather)
+        assert weather.temperature
+        assert weather.description
+        assert weather.humidity is not None
+
+
+@requires_maps
+class TestDailyForecast:
+    def test_daily_forecast(self):
+        forecasts = maps_service.get_daily_forecast(40.7128, -74.0060, days=3)
+        assert isinstance(forecasts, list)
+        assert len(forecasts) >= 1
+        assert isinstance(forecasts[0], DailyForecast)
+        assert forecasts[0].date
+
+
+@requires_maps
+class TestTimezone:
+    def test_timezone(self):
+        # New York City
+        tz = maps_service.get_timezone(40.7128, -74.0060)
+        assert isinstance(tz, TimezoneResult)
+        assert tz.time_zone_id == "America/New_York"
+        assert "Eastern" in tz.time_zone_name

@@ -1,11 +1,14 @@
 from fastapi import APIRouter
 
 from brokenclaw.models.maps import (
+    CurrentWeather,
+    DailyForecast,
     DirectionsRoute,
     DistanceMatrixEntry,
     GeocodeResult,
     PlaceDetail,
     PlaceResult,
+    TimezoneResult,
 )
 from brokenclaw.services import maps as maps_service
 
@@ -45,3 +48,18 @@ def distance_matrix(origins: str, destinations: str, mode: str = "driving") -> l
         destinations.split("|"),
         mode,
     )
+
+
+@router.get("/weather/current")
+def current_weather(lat: float, lng: float, units: str = "IMPERIAL") -> CurrentWeather:
+    return maps_service.get_current_weather(lat, lng, units)
+
+
+@router.get("/weather/forecast")
+def daily_forecast(lat: float, lng: float, days: int = 5, units: str = "IMPERIAL") -> list[DailyForecast]:
+    return maps_service.get_daily_forecast(lat, lng, days, units)
+
+
+@router.get("/timezone")
+def timezone(lat: float, lng: float) -> TimezoneResult:
+    return maps_service.get_timezone(lat, lng)

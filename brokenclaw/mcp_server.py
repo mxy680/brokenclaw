@@ -500,6 +500,39 @@ def maps_distance_matrix(origins: list[str], destinations: list[str], mode: str 
         return _handle_mcp_error(e)
 
 
+@mcp.tool
+def maps_current_weather(lat: float, lng: float, units: str = "IMPERIAL") -> dict:
+    """Get current weather conditions at a location (by latitude/longitude).
+    Use maps_geocode first to convert an address to coordinates.
+    Units: 'IMPERIAL' (Fahrenheit, mph) or 'METRIC' (Celsius, km/h)."""
+    try:
+        return maps_service.get_current_weather(lat, lng, units).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def maps_daily_forecast(lat: float, lng: float, days: int = 5, units: str = "IMPERIAL") -> dict:
+    """Get daily weather forecast for up to 10 days at a location.
+    Use maps_geocode first to convert an address to coordinates.
+    Units: 'IMPERIAL' or 'METRIC'."""
+    try:
+        forecasts = maps_service.get_daily_forecast(lat, lng, days, units)
+        return {"forecasts": [f.model_dump() for f in forecasts], "days": len(forecasts)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def maps_timezone(lat: float, lng: float) -> dict:
+    """Get timezone information for a location. Returns timezone ID (e.g. 'America/New_York'),
+    name, and UTC offsets. Use maps_geocode first to convert an address to coordinates."""
+    try:
+        return maps_service.get_timezone(lat, lng).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
 # --- Status tool ---
 
 @mcp.tool

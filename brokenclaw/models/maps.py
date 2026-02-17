@@ -55,3 +55,37 @@ class DistanceMatrixEntry(BaseModel):
     distance: str | None = None
     duration: str | None = None
     status: str
+
+
+class WindInfo(BaseModel):
+    speed: str | None = None
+    direction: str | None = None
+    gust: str | None = None
+
+
+class CurrentWeather(BaseModel):
+    temperature: str | None = None
+    feels_like: str | None = None
+    humidity: int | None = None
+    description: str | None = None
+    wind: WindInfo | None = None
+    uv_index: int | None = None
+    visibility: str | None = None
+    cloud_cover: int | None = None
+    is_daytime: bool | None = None
+    time_zone: str | None = None
+
+
+class DailyForecast(BaseModel):
+    date: str
+    high_temperature: str | None = None
+    low_temperature: str | None = None
+    description: str | None = None
+    precipitation_probability: int | None = None
+
+
+class TimezoneResult(BaseModel):
+    time_zone_id: str
+    time_zone_name: str
+    raw_offset: int
+    dst_offset: int
