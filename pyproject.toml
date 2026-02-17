@@ -14,5 +14,8 @@ dependencies = [
     "google-auth-httplib2",
 ]
 
+[project.optional-dependencies]
+test = ["pytest", "pytest-mock", "httpx"]
+
 [project.scripts]
 brokenclaw = "brokenclaw.main:run"
