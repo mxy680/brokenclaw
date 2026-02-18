@@ -22,6 +22,7 @@ from brokenclaw.routers.youtube import router as youtube_router
 from brokenclaw.routers.calendar import router as calendar_router
 from brokenclaw.routers.news import router as news_router
 from brokenclaw.routers.github import router as github_router
+from brokenclaw.routers.wolfram import router as wolfram_router
 
 
 # --- Localhost-only middleware ---
@@ -53,6 +54,7 @@ api.include_router(youtube_router)
 api.include_router(calendar_router)
 api.include_router(news_router)
 api.include_router(github_router)
+api.include_router(wolfram_router)
 
 
 @api.get("/api/status")

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     google_maps_api_key: str = ""
     news_api_key: str = ""
     github_token: str = ""
+    wolfram_app_id: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

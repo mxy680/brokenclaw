@@ -14,6 +14,7 @@ from brokenclaw.services import youtube as youtube_service
 from brokenclaw.services import calendar as calendar_service
 from brokenclaw.services import news as news_service
 from brokenclaw.services import github as github_service
+from brokenclaw.services import wolfram as wolfram_service
 
 mcp = FastMCP("Brokenclaw")
 
@@ -852,6 +853,32 @@ def github_notifications(
         return _handle_mcp_error(e)
 
 
+
+# --- Wolfram Alpha tools ---
+
+@mcp.tool
+def wolfram_query(input: str, units: str = "nonmetric") -> dict:
+    """Ask Wolfram Alpha a question and get detailed structured results with multiple pods.
+    Great for math, science, conversions, statistics, geography, and factual queries.
+    Units: 'nonmetric' (US customary) or 'metric'. Examples: 'integrate x^2 dx',
+    'population of France', 'distance from Earth to Mars', '150 USD to EUR'."""
+    try:
+        return wolfram_service.query(input, units).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def wolfram_short_answer(input: str, units: str = "imperial") -> dict:
+    """Get a quick one-line answer from Wolfram Alpha. Faster than full query but less detail.
+    Good for simple factual questions. Examples: 'How tall is the Eiffel Tower?',
+    'What is the square root of 144?', 'When is the next solar eclipse?'."""
+    try:
+        return wolfram_service.short_answer(input, units).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
 # --- Status tool ---
 
 @mcp.tool
@@ -885,5 +912,10 @@ def brokenclaw_status() -> dict:
     integrations["github"] = {
         "authenticated_accounts": ["token"] if github_token else [],
         "message": "Token configured" if github_token else "No token — create a PAT at github.com/settings/tokens and set GITHUB_TOKEN in .env",
+    }
+    wolfram_id = get_settings().wolfram_app_id
+    integrations["wolfram"] = {
+        "authenticated_accounts": ["app_id"] if wolfram_id else [],
+        "message": "AppID configured" if wolfram_id else "No AppID — get one at developer.wolframalpha.com and set WOLFRAM_APP_ID in .env",
     }
     return {"integrations": integrations}
