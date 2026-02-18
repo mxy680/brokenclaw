@@ -18,6 +18,7 @@ from brokenclaw.services import wolfram as wolfram_service
 from brokenclaw.services import canvas as canvas_service
 from brokenclaw.services import linkedin as linkedin_service
 from brokenclaw.services import instagram as instagram_service
+from brokenclaw.services import slack as slack_service
 
 mcp = FastMCP("Brokenclaw")
 
@@ -1220,6 +1221,90 @@ def instagram_search(query: str, count: int = 20, account: str = "default") -> d
         return _handle_mcp_error(e)
 
 
+# --- Slack tools ---
+
+@mcp.tool
+def slack_profile(user_id: str | None = None, account: str = "default") -> dict:
+    """Get a Slack user's profile. Omit user_id to get your own profile.
+    Provide a user_id to get someone else's profile (name, email, title, status)."""
+    try:
+        if user_id:
+            return slack_service.get_user_profile(user_id, account).model_dump()
+        return slack_service.get_my_profile(account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slack_conversations(
+    types: str = "public_channel,private_channel,mpim,im",
+    count: int = 100,
+    account: str = "default",
+) -> dict:
+    """List Slack conversations — channels, DMs, and group DMs.
+    Filter by types: 'public_channel', 'private_channel', 'mpim' (group DM), 'im' (1:1 DM).
+    Pass comma-separated values to include multiple types."""
+    try:
+        convos = slack_service.list_conversations(types, count, account)
+        return {"conversations": [c.model_dump() for c in convos], "count": len(convos)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slack_messages(channel_id: str, count: int = 15, account: str = "default") -> dict:
+    """Get message history for a Slack conversation. Provide the channel_id from slack_conversations.
+    Returns messages with text, user, timestamps, thread info, and reactions.
+    Default count is 15 (Slack rate-limits this endpoint)."""
+    try:
+        msgs = slack_service.get_messages(channel_id, count, account)
+        return {"messages": [m.model_dump() for m in msgs], "count": len(msgs)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slack_thread(channel_id: str, thread_ts: str, count: int = 50, account: str = "default") -> dict:
+    """Get replies in a Slack thread. Provide the channel_id and thread_ts (timestamp of the parent message).
+    The thread_ts comes from the 'ts' field of a message that has reply_count > 0."""
+    try:
+        msgs = slack_service.get_thread_replies(channel_id, thread_ts, count, account)
+        return {"messages": [m.model_dump() for m in msgs], "count": len(msgs)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slack_search(query: str, count: int = 20, account: str = "default") -> dict:
+    """Search messages across the Slack workspace. Supports Slack search operators like
+    'from:@user', 'in:#channel', 'has:link', 'before:2025-01-01', 'after:2024-06-01'."""
+    try:
+        results = slack_service.search_messages(query, count, account)
+        return {"results": [r.model_dump() for r in results], "count": len(results)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slack_users(count: int = 100, account: str = "default") -> dict:
+    """List workspace users. Returns profiles with names, emails, titles, and status.
+    Excludes deleted/deactivated users."""
+    try:
+        users = slack_service.list_users(count, account)
+        return {"users": [u.model_dump() for u in users], "count": len(users)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slack_conversation_info(channel_id: str, account: str = "default") -> dict:
+    """Get details about a specific Slack channel or DM — name, topic, purpose, member count."""
+    try:
+        return slack_service.get_conversation_info(channel_id, account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
 # --- Status tool ---
 
 @mcp.tool
@@ -1230,6 +1315,7 @@ def brokenclaw_status() -> dict:
     from brokenclaw.services.canvas_auth import has_canvas_session
     from brokenclaw.services.linkedin_auth import has_linkedin_session
     from brokenclaw.services.instagram_auth import has_instagram_session
+    from brokenclaw.services.slack_auth import has_slack_session
     store = _get_token_store()
     integrations = {}
     for name in SUPPORTED_INTEGRATIONS:
@@ -1292,5 +1378,11 @@ def brokenclaw_status() -> dict:
     integrations["instagram"] = {
         "authenticated_accounts": ["session"] if ig_session else [],
         "message": "Session active" if ig_session else "Not authenticated — visit /auth/instagram/setup",
+    }
+    # Slack: show session status
+    slack_session = has_slack_session()
+    integrations["slack"] = {
+        "authenticated_accounts": ["session"] if slack_session else [],
+        "message": "Session active" if slack_session else "Not authenticated — visit /auth/slack/setup",
     }
     return {"integrations": integrations}

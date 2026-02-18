@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     linkedin_password: str = ""
     instagram_username: str = ""
     instagram_password: str = ""
+    slack_workspace_url: str = ""  # e.g. "https://cwru-sdle.slack.com"
+    slack_email: str = ""
+    slack_password: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

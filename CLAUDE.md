@@ -12,7 +12,7 @@ Integration server that exposes external platforms via REST API + MCP tools for 
 - **OAuth tokens** stored in `tokens.json` (gitignored), keyed by `integration:account`
 - **Multi-account** — all OAuth endpoints/tools accept `account` param (defaults to `"default"`)
 
-## Integrations (16)
+## Integrations (17)
 
 ### Google OAuth-based (9)
 | Integration | Scope | Key Operations |
@@ -36,11 +36,12 @@ Integration server that exposes external platforms via REST API + MCP tools for 
 | Wolfram Alpha | `WOLFRAM_APP_ID` | structured queries, short answers (math, science, facts) |
 | Canvas LMS | `CANVAS_BASE_URL` + session | courses, assignments, grades, announcements, todo, profile (+ iCal fallback via `CANVAS_FEED_URL`) |
 
-### Session-cookie based (2)
+### Session-cookie based (3)
 | Integration | Auth | Key Operations |
 |---|---|---|
 | LinkedIn | Playwright login + Voyager API | profile, feed, connections, conversations, messages, notifications, search people/companies/jobs |
 | Instagram | Playwright login + private web API | profile, feed, posts, stories, reels, followers/following, saved, DMs (list), search, explore |
+| Slack | Playwright login + web API (`xoxc-` token + `d` cookie) | profile, conversations, messages, threads, search, users (read-only) |
 
 ## Running
 
@@ -63,6 +64,8 @@ uvicorn brokenclaw.main:app --host 127.0.0.1 --port 9000
 - `brokenclaw/services/linkedin_client.py` — LinkedIn Voyager API client with session cookies, CSRF token, start/count pagination
 - `brokenclaw/services/instagram_auth.py` — Playwright-based Instagram login, 2FA challenge, cookie capture
 - `brokenclaw/services/instagram_client.py` — Instagram private web API client with session cookies, CSRF token, cursor pagination
+- `brokenclaw/services/slack_auth.py` — Playwright-based Slack login, xoxc token extraction from localStorage, cookie capture
+- `brokenclaw/services/slack_client.py` — Slack web API client with xoxc token + d cookie, POST-based methods, cursor pagination
 - `brokenclaw/models/*.py` — Pydantic models per integration
 - `brokenclaw/routers/*.py` — REST endpoints per integration
 
@@ -81,6 +84,9 @@ uvicorn brokenclaw.main:app --host 127.0.0.1 --port 9000
    LINKEDIN_PASSWORD=...
    INSTAGRAM_USERNAME=...
    INSTAGRAM_PASSWORD=...
+   SLACK_WORKSPACE_URL=https://cwru-sdle.slack.com
+   SLACK_EMAIL=...
+   SLACK_PASSWORD=...
    ```
 3. Install Playwright: `pip install -e . && playwright install chromium`
 4. Authenticate Google integrations: `http://localhost:9000/auth/{integration}/setup`
@@ -89,6 +95,7 @@ uvicorn brokenclaw.main:app --host 127.0.0.1 --port 9000
 7. Canvas session auth: visit `http://localhost:9000/auth/canvas/setup`, complete SSO + Duo MFA in browser
 8. LinkedIn session auth: visit `http://localhost:9000/auth/linkedin/setup`, complete any verification challenge in browser
 9. Instagram session auth: visit `http://localhost:9000/auth/instagram/setup`, complete any 2FA challenge in browser
+10. Slack session auth: visit `http://localhost:9000/auth/slack/setup`, complete login in browser
 
 ## Adding Integrations
 
@@ -139,10 +146,17 @@ For Claude Code, add to MCP settings:
 - LinkedIn response cookies (especially `__cf_bm` from Cloudflare) must be persisted back to token store after each request
 - LinkedIn `get_full_profile()` returns basic profile info but experience/education/skills are empty — LinkedIn serves section data via server-side rendering, not the Voyager API
 - LinkedIn job search uses REST endpoint `voyagerJobsDashJobCards`, not the GraphQL search endpoint used by people/company search
-- LinkedIn and Canvas and Instagram auth routes are all defined **before** generic `/{integration}` routes in `auth.py`
+- LinkedIn, Canvas, Instagram, and Slack auth routes are all defined **before** generic `/{integration}` routes in `auth.py`
 - Instagram uses Playwright for browser-based login; session cookies (`sessionid`, `csrftoken`, `ds_user_id`) stored in `tokens.json` under `"instagram"` key
 - Instagram private web API uses `X-IG-App-ID: 936619743392459`, `X-CSRFToken` header, and `curl_cffi` with Chrome TLS impersonation
 - Instagram `csrftoken` rotates frequently in `Set-Cookie` headers — must persist after every request (same as LinkedIn's cookie rotation)
 - Instagram API split: most endpoints on `https://i.instagram.com/api/v1/`, search + web profile on `https://www.instagram.com/api/v1/`
 - Instagram feed timeline and clips/user (reels) are POST endpoints, not GET
 - Instagram uses cursor-based pagination (`next_max_id` / `max_id`), not offset-based
+- Slack uses Playwright for browser-based login; `xoxc-` client token extracted from `localStorage.localConfig_v2`, `d` cookie (value starts with `xoxd-`) captured from browser cookies; both stored in `tokens.json` under `"slack"` key
+- Slack web API requires both `Authorization: Bearer xoxc-...` header and `Cookie: d=xoxd-...` on every request — neither works alone
+- Slack API methods are POST-based with form-encoded params, not GET with query params
+- Slack uses cursor-based pagination (`response_metadata.next_cursor`), pass as `cursor` param on next request
+- Slack `conversations.history` is rate-limited (~1 req/min with max 15 results) — keep defaults conservative
+- Slack message `ts` field (e.g. `"1234567890.123456"`) serves as both timestamp and unique message ID
+- Slack uses `curl_cffi` with Chrome TLS impersonation (same pattern as LinkedIn/Instagram)

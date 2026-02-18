@@ -26,6 +26,7 @@ from brokenclaw.routers.wolfram import router as wolfram_router
 from brokenclaw.routers.canvas import router as canvas_router
 from brokenclaw.routers.linkedin import router as linkedin_router
 from brokenclaw.routers.instagram import router as instagram_router
+from brokenclaw.routers.slack import router as slack_router
 
 
 # --- Localhost-only middleware ---
@@ -61,6 +62,7 @@ api.include_router(wolfram_router)
 api.include_router(canvas_router)
 api.include_router(linkedin_router)
 api.include_router(instagram_router)
+api.include_router(slack_router)
 
 
 @api.get("/api/status")
@@ -69,6 +71,7 @@ def api_status() -> dict:
     from brokenclaw.services.canvas_auth import has_canvas_session
     from brokenclaw.services.linkedin_auth import has_linkedin_session
     from brokenclaw.services.instagram_auth import has_instagram_session
+    from brokenclaw.services.slack_auth import has_slack_session
 
     store = _get_token_store()
     statuses = {}
@@ -97,6 +100,12 @@ def api_status() -> dict:
     statuses["instagram"] = {
         "session_active": ig_session,
         "ready": ig_session,
+    }
+    # Slack session status
+    slack_session = has_slack_session()
+    statuses["slack"] = {
+        "session_active": slack_session,
+        "ready": slack_session,
     }
     return {"integrations": statuses}
 

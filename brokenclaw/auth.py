@@ -241,6 +241,38 @@ def instagram_status(account: str = "default") -> StatusResponse:
     return StatusResponse(integration="instagram", authenticated=has_session, message=msg)
 
 
+# Slack-specific routes (must be defined before generic /{integration} routes)
+
+@router.get("/slack/setup")
+def slack_setup(account: str = "default"):
+    """Launch Playwright browser for Slack login.
+    Credentials pulled from SLACK_EMAIL/SLACK_PASSWORD in .env."""
+    from brokenclaw.services.slack_auth import run_slack_login
+
+    try:
+        run_slack_login(account=account)
+        return StatusResponse(
+            integration="slack",
+            authenticated=True,
+            message=f"Slack session captured for account '{account}'. You can close this tab.",
+        )
+    except AuthenticationError as e:
+        return StatusResponse(integration="slack", authenticated=False, message=str(e))
+
+
+@router.get("/slack/status")
+def slack_status(account: str = "default") -> StatusResponse:
+    """Check whether Slack has an active session."""
+    from brokenclaw.services.slack_auth import has_slack_session
+
+    has_session = has_slack_session(account)
+    if has_session:
+        msg = f"Session active (account={account})"
+    else:
+        msg = f"Not authenticated — visit /auth/slack/setup?account={account}"
+    return StatusResponse(integration="slack", authenticated=has_session, message=msg)
+
+
 # Canvas-specific routes (must be defined before generic /{integration} routes)
 
 @router.get("/canvas/setup")
