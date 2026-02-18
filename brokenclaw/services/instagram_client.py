@@ -1,11 +1,14 @@
-"""Authenticated HTTP client for Instagram private web API.
+"""Authenticated HTTP client for Instagram web API.
 
-Uses session cookies captured by instagram_auth.py. Handles Instagram-specific
-headers, cookie persistence, and cursor-based pagination.
+Uses session cookies captured by instagram_auth.py. All endpoints go through
+www.instagram.com (the web API), NOT i.instagram.com (the mobile API which
+rejects web-session user agents).
 
-Uses curl_cffi with browser TLS fingerprint impersonation -- Instagram also
-rejects requests from standard HTTP libraries by detecting non-browser TLS
-fingerprints (same pattern as LinkedIn).
+Uses curl_cffi with browser TLS fingerprint impersonation — Instagram rejects
+requests from standard HTTP libraries by detecting non-browser TLS fingerprints
+(same pattern as LinkedIn). Do NOT set a custom User-Agent header — let
+curl_cffi's impersonation handle it; setting an explicit UA causes
+"useragent mismatch" errors because Instagram checks the TLS-level fingerprint.
 
 Response cookies (especially csrftoken) are persisted back to the token store
 after each request so subsequent calls stay authenticated.
@@ -19,12 +22,15 @@ from brokenclaw.auth import _get_token_store, _token_key
 from brokenclaw.exceptions import AuthenticationError, IntegrationError, RateLimitError
 from brokenclaw.services.instagram_auth import get_instagram_session
 
-BASE_URL = "https://i.instagram.com/api/v1"
-WEB_BASE_URL = "https://www.instagram.com/api/v1"
+BASE_URL = "https://www.instagram.com/api/v1"
 
 
 def _build_headers(session_data: dict) -> dict:
-    """Construct request headers with session cookies and CSRF token."""
+    """Construct request headers with session cookies and CSRF token.
+
+    Does NOT set User-Agent — curl_cffi's impersonate="chrome" handles that,
+    and Instagram validates the UA against the TLS fingerprint.
+    """
     all_cookies = session_data.get("all_cookies", {})
     if all_cookies:
         cookies = "; ".join(f"{k}={v}" for k, v in all_cookies.items())
@@ -41,13 +47,8 @@ def _build_headers(session_data: dict) -> dict:
         "X-CSRFToken": session_data.get("csrftoken", ""),
         "X-IG-App-ID": "936619743392459",
         "X-Requested-With": "XMLHttpRequest",
-        "X-IG-WWW-Claim": "0",
         "Accept": "*/*",
         "Referer": "https://www.instagram.com/",
-        "Origin": "https://www.instagram.com",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-site",
     }
 
 
@@ -71,7 +72,6 @@ def _update_cookies(response, account: str) -> None:
         data = store.get(key)
         if data and "all_cookies" in data:
             data["all_cookies"].update(new_cookies)
-            # Keep top-level csrftoken in sync
             if "csrftoken" in new_cookies:
                 data["csrftoken"] = new_cookies["csrftoken"]
             store.save(key, data)
@@ -97,10 +97,9 @@ def instagram_get(
     params: dict | None = None,
     base_url: str | None = None,
 ) -> dict:
-    """Make an authenticated GET request to the Instagram private API.
+    """Make an authenticated GET request to the Instagram web API.
 
     path should be relative to the base URL (e.g. 'accounts/current_user/').
-    Use base_url=WEB_BASE_URL for endpoints on www.instagram.com.
     """
     session_data = get_instagram_session(account)
     url = f"{base_url or BASE_URL}/{path.lstrip('/')}"
@@ -125,7 +124,7 @@ def instagram_post(
     params: dict | None = None,
     base_url: str | None = None,
 ) -> dict:
-    """Make an authenticated POST request to the Instagram private API.
+    """Make an authenticated POST request to the Instagram web API.
 
     Used for endpoints like feed/timeline/ and clips/user/ that require POST.
     """

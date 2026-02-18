@@ -1,5 +1,6 @@
-"""Instagram service layer -- parses private API responses into Pydantic models."""
+"""Instagram service layer -- parses web API responses into Pydantic models."""
 
+from brokenclaw.exceptions import IntegrationError
 from brokenclaw.models.instagram import (
     InstagramComment,
     InstagramDirectThread,
@@ -12,8 +13,6 @@ from brokenclaw.models.instagram import (
     InstagramStory,
 )
 from brokenclaw.services.instagram_client import (
-    BASE_URL,
-    WEB_BASE_URL,
     instagram_get,
     instagram_get_paginated,
     instagram_post,
@@ -70,21 +69,21 @@ def _parse_post(item: dict) -> InstagramPost:
 
 
 def get_my_profile(account: str = "default") -> InstagramProfile:
-    """Get the authenticated user's profile."""
-    data = instagram_get("accounts/current_user/", account, params={"edit": "true"})
-    user = data.get("user", {})
-    return InstagramProfile(
-        user_id=str(user.get("pk", "")),
-        username=user.get("username"),
-        full_name=user.get("full_name"),
-        bio=user.get("biography"),
-        profile_pic_url=user.get("profile_pic_url"),
-        follower_count=user.get("follower_count"),
-        following_count=user.get("following_count"),
-        post_count=user.get("media_count"),
-        is_private=user.get("is_private"),
-        external_url=user.get("external_url"),
-    )
+    """Get the authenticated user's profile.
+
+    Uses web_profile_info with the username from config, since
+    accounts/current_user is a mobile-only endpoint.
+    """
+    from brokenclaw.config import get_settings
+    from brokenclaw.services.instagram_auth import get_instagram_session
+
+    # Try username from session's all_cookies (ds_user_id) -> need username though
+    # Fall back to config
+    session = get_instagram_session(account)
+    username = get_settings().instagram_username
+    if not username:
+        raise IntegrationError("INSTAGRAM_USERNAME not set in .env — needed for profile lookup")
+    return get_user_profile(username, account)
 
 
 def get_user_profile(username: str, account: str = "default") -> InstagramProfile:
@@ -93,7 +92,6 @@ def get_user_profile(username: str, account: str = "default") -> InstagramProfil
         "users/web_profile_info/",
         account,
         params={"username": username},
-        base_url=WEB_BASE_URL,
     )
     user = data.get("data", {}).get("user", {})
     return InstagramProfile(
@@ -416,6 +414,7 @@ def search_users(
         params={"query": query, "count": count},
         base_url="https://www.instagram.com",
     )
+    # Note: search uses the www root, not /api/v1/
     results = []
     for item in data.get("users", []):
         user = item.get("user", {})
@@ -435,12 +434,21 @@ def search_users(
 
 
 def get_explore(account: str = "default") -> list[InstagramPost]:
-    """Get explore page posts."""
-    data = instagram_get("discover/topical_explore/", account)
+    """Get explore page posts.
+
+    Uses the explore grid endpoint (web API compatible).
+    """
+    try:
+        data = instagram_get("discover/web/explore_grid/", account)
+    except IntegrationError:
+        # Fallback: explore endpoints may not work on all sessions
+        return []
     posts = []
-    for item in data.get("items", []):
-        media = item.get("media", item)
-        if not media.get("pk"):
-            continue
-        posts.append(_parse_post(media))
+    for section in data.get("sectional_items", data.get("items", [])):
+        layout_content = section.get("layout_content", {})
+        medias = layout_content.get("medias", [])
+        for m in medias:
+            media = m.get("media", {})
+            if media.get("pk"):
+                posts.append(_parse_post(media))
     return posts
