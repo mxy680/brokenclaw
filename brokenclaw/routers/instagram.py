@@ -1,4 +1,7 @@
+import io
+
 from fastapi import APIRouter
+from starlette.responses import StreamingResponse
 
 from brokenclaw.models.instagram import (
     InstagramComment,
@@ -14,6 +17,16 @@ from brokenclaw.models.instagram import (
 from brokenclaw.services import instagram as instagram_service
 
 router = APIRouter(prefix="/api/instagram", tags=["instagram"])
+
+
+@router.get("/media/download")
+def download_media(url: str):
+    data, filename, mime_type = instagram_service.download_media(url)
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type=mime_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/profile")

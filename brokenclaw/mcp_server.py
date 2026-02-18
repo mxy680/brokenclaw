@@ -1,3 +1,5 @@
+import base64
+
 from fastmcp import FastMCP
 
 from brokenclaw.auth import SUPPORTED_INTEGRATIONS, _get_token_store
@@ -85,6 +87,22 @@ def gmail_reply(message_id: str, body: str, account: str = "default") -> dict:
     Use account parameter to reply from a specific Gmail account."""
     try:
         return gmail_service.reply_to_message(message_id, body, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def gmail_download_attachment(message_id: str, attachment_id: str, account: str = "default") -> dict:
+    """Download an email attachment. Provide the message_id and attachment_id from gmail_get_message.
+    Returns the file as base64-encoded data with filename and mime_type."""
+    try:
+        data, filename, mime_type = gmail_service.download_attachment(message_id, attachment_id, account=account)
+        return {
+            "filename": filename,
+            "mime_type": mime_type,
+            "size": len(data),
+            "data_base64": base64.b64encode(data).decode(),
+        }
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 
@@ -1105,6 +1123,22 @@ def linkedin_search_jobs(keywords: str, location: str | None = None, count: int 
         return _handle_mcp_error(e)
 
 
+@mcp.tool
+def linkedin_download_attachment(url: str, account: str = "default") -> dict:
+    """Download a LinkedIn media attachment by URL (from message attachments or post media).
+    Best-effort — some LinkedIn URLs may require active session. Returns base64-encoded data."""
+    try:
+        data, filename, mime_type = linkedin_service.download_attachment(url, account)
+        return {
+            "filename": filename,
+            "mime_type": mime_type,
+            "size": len(data),
+            "data_base64": base64.b64encode(data).decode(),
+        }
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
 # --- Instagram tools ---
 
 @mcp.tool
@@ -1221,6 +1255,23 @@ def instagram_search(query: str, count: int = 20, account: str = "default") -> d
         return _handle_mcp_error(e)
 
 
+@mcp.tool
+def instagram_download_media(url: str) -> dict:
+    """Download Instagram media (photo/video) from a CDN URL.
+    Pass the media_url from any Instagram post, story, or reel.
+    CDN URLs are temporary — download promptly. Returns base64-encoded data."""
+    try:
+        data, filename, mime_type = instagram_service.download_media(url)
+        return {
+            "filename": filename,
+            "mime_type": mime_type,
+            "size": len(data),
+            "data_base64": base64.b64encode(data).decode(),
+        }
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
 # --- Slack tools ---
 
 @mcp.tool
@@ -1301,6 +1352,22 @@ def slack_conversation_info(channel_id: str, account: str = "default") -> dict:
     """Get details about a specific Slack channel or DM — name, topic, purpose, member count."""
     try:
         return slack_service.get_conversation_info(channel_id, account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slack_download_file(file_id: str, account: str = "default") -> dict:
+    """Download a Slack file by its file_id (from message file attachments).
+    Uses files.info to get metadata then downloads. Returns base64-encoded data."""
+    try:
+        data, filename, mime_type = slack_service.download_file(file_id, account)
+        return {
+            "filename": filename,
+            "mime_type": mime_type,
+            "size": len(data),
+            "data_base64": base64.b64encode(data).decode(),
+        }
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 

@@ -18,8 +18,40 @@ from brokenclaw.models.linkedin import (
 )
 from brokenclaw.services.linkedin_client import (
     _extract_voyager_entities,
+    linkedin_download,
     linkedin_get,
 )
+
+
+def download_attachment(url: str, account: str = "default") -> tuple[bytes, str, str]:
+    """Download a LinkedIn media attachment by URL.
+
+    Best-effort — LinkedIn CDN URLs may or may not require auth.
+    Returns (bytes, filename, mime_type).
+    """
+    from posixpath import basename
+    from urllib.parse import urlparse
+
+    content = linkedin_download(url, account)
+
+    # Infer filename from URL path
+    path = urlparse(url).path
+    filename = basename(path) or "attachment"
+
+    # Infer mime_type from filename extension
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    mime_map = {
+        "pdf": "application/pdf",
+        "jpg": "image/jpeg", "jpeg": "image/jpeg",
+        "png": "image/png",
+        "gif": "image/gif",
+        "mp4": "video/mp4",
+        "doc": "application/msword",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }
+    mime_type = mime_map.get(ext, "application/octet-stream")
+
+    return content, filename, mime_type
 
 
 def _format_date(date_dict: dict | None) -> str | None:

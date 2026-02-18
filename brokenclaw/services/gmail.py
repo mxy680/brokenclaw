@@ -144,6 +144,38 @@ def send_message(to: str, subject: str, body: str, account: str = "default") -> 
         _handle_api_error(e)
 
 
+def download_attachment(
+    message_id: str, attachment_id: str, account: str = "default"
+) -> tuple[bytes, str, str]:
+    """Download an attachment by message ID and attachment ID.
+
+    Returns (bytes, filename, mime_type).
+    """
+    service = _get_gmail_service(account)
+    try:
+        # Fetch message to get filename/mime_type from attachment metadata
+        msg = service.users().messages().get(
+            userId="me", id=message_id, format="full"
+        ).execute(num_retries=3)
+        attachments = _extract_attachments(msg["payload"])
+        filename = "attachment"
+        mime_type = "application/octet-stream"
+        for att in attachments:
+            if att.attachment_id == attachment_id:
+                filename = att.filename or filename
+                mime_type = att.mime_type or mime_type
+                break
+
+        # Download the attachment bytes
+        att_data = service.users().messages().attachments().get(
+            userId="me", messageId=message_id, id=attachment_id
+        ).execute(num_retries=3)
+        data = base64.urlsafe_b64decode(att_data["data"])
+        return data, filename, mime_type
+    except HttpError as e:
+        _handle_api_error(e)
+
+
 def reply_to_message(message_id: str, body: str, account: str = "default") -> GmailMessage:
     """Reply to an existing message in its thread."""
     service = _get_gmail_service(account)

@@ -97,6 +97,35 @@ def _extract_voyager_entities(data: dict, entity_type: str) -> list[dict]:
     ]
 
 
+def linkedin_download(url: str, account: str = "default") -> bytes:
+    """Download media/file from a LinkedIn URL with auth headers.
+
+    Handles both CDN URLs (media.licdn.com) and authenticated URLs.
+    Returns raw bytes.
+    """
+    session_data = get_linkedin_session(account)
+    headers = _build_headers(session_data)
+    # Override Accept for binary content
+    headers["Accept"] = "*/*"
+
+    resp = curl_requests.get(
+        url,
+        headers=headers,
+        impersonate="chrome",
+        allow_redirects=True,
+    )
+    _update_cookies(resp, account)
+    if resp.status_code in (401, 302):
+        raise AuthenticationError(
+            "LinkedIn session expired. Visit /auth/linkedin/setup to re-authenticate."
+        )
+    if resp.status_code >= 400:
+        raise IntegrationError(
+            f"LinkedIn download error (HTTP {resp.status_code}): {resp.text[:500]}"
+        )
+    return resp.content
+
+
 def linkedin_get(
     path: str,
     account: str = "default",

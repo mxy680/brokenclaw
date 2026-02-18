@@ -7,7 +7,7 @@ from brokenclaw.models.slack import (
     SlackProfile,
     SlackSearchResult,
 )
-from brokenclaw.services.slack_client import slack_api, slack_api_paginated
+from brokenclaw.services.slack_client import slack_api, slack_api_paginated, slack_download
 
 
 def _parse_profile(user: dict) -> SlackProfile:
@@ -56,6 +56,29 @@ def _parse_message(msg: dict) -> SlackMessage:
         reactions_summary=reactions_summary,
         files=files,
     )
+
+
+# --- File Download ---
+
+
+def download_file(
+    file_id: str, account: str = "default"
+) -> tuple[bytes, str, str]:
+    """Download a Slack file by file_id.
+
+    Uses files.info to get current metadata + url_private, then downloads.
+    Returns (bytes, filename, mime_type).
+    """
+    data = slack_api("files.info", account, {"file": file_id})
+    file_info = data.get("file", {})
+    url_private = file_info.get("url_private")
+    if not url_private:
+        from brokenclaw.exceptions import IntegrationError
+        raise IntegrationError(f"No download URL for Slack file {file_id}")
+    name = file_info.get("name", "file")
+    mime_type = file_info.get("mimetype", "application/octet-stream")
+    content = slack_download(url_private, account)
+    return content, name, mime_type
 
 
 # --- Profile ---

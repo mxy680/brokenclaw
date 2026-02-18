@@ -94,6 +94,35 @@ def _handle_response(response) -> dict:
     return data
 
 
+def slack_download(url: str, account: str = "default") -> bytes:
+    """Download a file from Slack by its url_private URL.
+
+    Uses the same auth headers as API calls. Returns raw bytes.
+    """
+    session_data = get_slack_session(account)
+    headers = _build_headers(session_data)
+    # Remove Content-Type since this is a GET, not a form POST
+    headers.pop("Content-Type", None)
+
+    resp = curl_requests.get(
+        url,
+        headers=headers,
+        impersonate="chrome",
+        allow_redirects=True,
+    )
+    _update_cookies(resp, account)
+
+    if resp.status_code in (401, 403):
+        raise AuthenticationError(
+            "Slack session expired. Visit /auth/slack/setup to re-authenticate."
+        )
+    if resp.status_code >= 400:
+        raise IntegrationError(
+            f"Slack file download error (HTTP {resp.status_code}): {resp.text[:500]}"
+        )
+    return resp.content
+
+
 def slack_api(
     method: str,
     account: str = "default",

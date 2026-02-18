@@ -1,4 +1,7 @@
+import io
+
 from fastapi import APIRouter
+from starlette.responses import StreamingResponse
 
 from brokenclaw.models.slack import (
     SlackConversation,
@@ -9,6 +12,16 @@ from brokenclaw.models.slack import (
 from brokenclaw.services import slack as slack_service
 
 router = APIRouter(prefix="/api/slack", tags=["slack"])
+
+
+@router.get("/files/{file_id}")
+def download_file(file_id: str, account: str = "default"):
+    data, filename, mime_type = slack_service.download_file(file_id, account)
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type=mime_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/profile")

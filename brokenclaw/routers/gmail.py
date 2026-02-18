@@ -1,4 +1,7 @@
+import io
+
 from fastapi import APIRouter
+from starlette.responses import StreamingResponse
 
 from brokenclaw.models.gmail import (
     GmailMessage,
@@ -26,6 +29,16 @@ def search(query: str, max_results: int = 20, account: str = "default") -> Inbox
 @router.get("/messages/{message_id}")
 def get_message(message_id: str, account: str = "default") -> GmailMessage:
     return gmail_service.get_message(message_id, account=account)
+
+
+@router.get("/messages/{message_id}/attachments/{attachment_id}")
+def download_attachment(message_id: str, attachment_id: str, account: str = "default"):
+    data, filename, mime_type = gmail_service.download_attachment(message_id, attachment_id, account=account)
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type=mime_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/send")

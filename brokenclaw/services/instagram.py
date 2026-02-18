@@ -20,6 +20,33 @@ from brokenclaw.services.instagram_client import (
 )
 
 
+def download_media(url: str) -> tuple[bytes, str, str]:
+    """Download Instagram media from a CDN URL.
+
+    CDN URLs (fbcdn.net/cdninstagram.com) are signed and publicly accessible
+    — no auth headers needed. Returns (bytes, filename, mime_type).
+    """
+    from posixpath import basename
+    from urllib.parse import urlparse
+
+    from curl_cffi import requests as curl_requests
+
+    from brokenclaw.exceptions import IntegrationError
+
+    resp = curl_requests.get(url, impersonate="chrome", allow_redirects=True)
+    if resp.status_code >= 400:
+        raise IntegrationError(
+            f"Instagram media download error (HTTP {resp.status_code})"
+        )
+
+    mime_type = resp.headers.get("content-type", "application/octet-stream")
+    # Infer filename from URL path (strip query params)
+    path = urlparse(url).path
+    filename = basename(path) or "media"
+
+    return resp.content, filename, mime_type
+
+
 def _media_type_str(media_type: int | None) -> str | None:
     """Convert Instagram's numeric media_type to a human-readable string."""
     if media_type is None:

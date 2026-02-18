@@ -1,4 +1,7 @@
+import io
+
 from fastapi import APIRouter
+from starlette.responses import StreamingResponse
 
 from brokenclaw.models.linkedin import (
     LinkedInConnection,
@@ -13,6 +16,16 @@ from brokenclaw.models.linkedin import (
 from brokenclaw.services import linkedin as linkedin_service
 
 router = APIRouter(prefix="/api/linkedin", tags=["linkedin"])
+
+
+@router.get("/media/download")
+def download_media(url: str, account: str = "default"):
+    data, filename, mime_type = linkedin_service.download_attachment(url, account)
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type=mime_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/profile")
