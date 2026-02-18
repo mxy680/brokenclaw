@@ -68,11 +68,9 @@ class TestCreateUpdateDeleteEvent:
         finally:
             calendar_service.delete_event("primary", created.id)
 
-        # Verify deletion — get should raise
-        import pytest
-        from brokenclaw.exceptions import IntegrationError
-        with pytest.raises((IntegrationError, Exception)):
-            calendar_service.get_event("primary", created.id)
+        # After deletion, Calendar API returns event with status "cancelled"
+        deleted = calendar_service.get_event("primary", created.id)
+        assert deleted.status == "cancelled"
 
 
 @requires_calendar
