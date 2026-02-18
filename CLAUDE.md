@@ -12,7 +12,7 @@ Integration server that exposes external platforms via REST API + MCP tools for 
 - **OAuth tokens** stored in `tokens.json` (gitignored), keyed by `integration:account`
 - **Multi-account** — all OAuth endpoints/tools accept `account` param (defaults to `"default"`)
 
-## Integrations (13)
+## Integrations (14)
 
 ### Google OAuth-based (9)
 | Integration | Scope | Key Operations |
@@ -27,13 +27,14 @@ Integration server that exposes external platforms via REST API + MCP tools for 
 | YouTube | youtube.readonly | search, video/channel details, playlists |
 | Calendar | calendar | list/create/update/delete events, quick add |
 
-### API-key based (4)
+### API-key / feed based (5)
 | Integration | Env Var | Key Operations |
 |---|---|---|
 | Maps/Weather/Timezone | `GOOGLE_MAPS_API_KEY` | geocode, directions, places, weather, forecast, timezone |
 | News | `NEWS_API_KEY` | top headlines, search articles |
 | GitHub | `GITHUB_TOKEN` | repos, issues, PRs, notifications, search |
 | Wolfram Alpha | `WOLFRAM_APP_ID` | structured queries, short answers (math, science, facts) |
+| Canvas LMS | `CANVAS_FEED_URL` | upcoming assignments/events via iCal feed |
 
 ## Running
 
@@ -62,6 +63,7 @@ uvicorn brokenclaw.main:app --host 127.0.0.1 --port 9000
    NEWS_API_KEY=...
    GITHUB_TOKEN=...
    WOLFRAM_APP_ID=...
+   CANVAS_FEED_URL=...
    ```
 3. Authenticate Google integrations: `http://localhost:9000/auth/{integration}/setup`
 4. Add redirect URIs to Google Cloud Console: `http://localhost:9000/auth/{integration}/callback`
@@ -105,4 +107,4 @@ For Claude Code, add to MCP settings:
 - OAuth client is a **web** type (not desktop) — uses redirect-based flow
 - `OAUTHLIB_RELAX_TOKEN_SCOPE` is set to handle Google returning broader scopes
 - API-key integrations use `requests` library directly (not googleapiclient)
-- `requests` is a transitive dependency (via google-auth) — not listed explicitly in pyproject.toml
+- `requests` and `icalendar` are explicit dependencies in pyproject.toml
