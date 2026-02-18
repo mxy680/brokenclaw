@@ -180,12 +180,13 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # Canvas-specific routes (must be defined before generic /{integration} routes)
 
 @router.get("/canvas/setup")
-def canvas_setup(account: str = "default"):
-    """Launch Playwright browser for Canvas SSO + Duo MFA login."""
+def canvas_setup(username: str = "", password: str = "", account: str = "default"):
+    """Launch Playwright browser for Canvas SSO + Duo MFA login.
+    Optionally provide username/password to auto-fill SSO form."""
     from brokenclaw.services.canvas_auth import run_canvas_login
 
     try:
-        run_canvas_login(account)
+        run_canvas_login(username=username, password=password, account=account)
         return StatusResponse(
             integration="canvas",
             authenticated=True,

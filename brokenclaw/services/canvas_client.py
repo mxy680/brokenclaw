@@ -14,20 +14,29 @@ from brokenclaw.services.canvas_auth import get_canvas_session
 
 
 def _build_headers(session_data: dict) -> dict:
-    """Construct request headers with session cookies and CSRF token."""
-    cookies = "; ".join([
-        f"canvas_session={session_data['canvas_session']}",
-        f"_csrf_token={session_data.get('_csrf_token', '')}",
-        f"log_session_id={session_data.get('log_session_id', '')}",
-    ])
+    """Construct request headers with all session cookies and CSRF token."""
+    # Use all cookies captured from the browser if available
+    all_cookies = session_data.get("all_cookies", {})
+    if all_cookies:
+        cookies = "; ".join(f"{k}={v}" for k, v in all_cookies.items())
+    else:
+        cookies = "; ".join([
+            f"canvas_session={session_data['canvas_session']}",
+            f"_csrf_token={session_data.get('_csrf_token', '')}",
+            f"log_session_id={session_data.get('log_session_id', '')}",
+        ])
     headers = {
         "Cookie": cookies,
         "X-Requested-With": "XMLHttpRequest",
         "Accept": "application/json",
     }
-    csrf = session_data.get("_csrf_token", "")
+    # Prefer the CSRF token from the HTML meta tag (the real authenticity token)
+    # over the _csrf_token cookie (which is a different value)
+    csrf_meta = session_data.get("csrf_meta_token", "")
+    csrf_cookie = session_data.get("_csrf_token", "")
+    csrf = csrf_meta or unquote(csrf_cookie) if csrf_cookie else ""
     if csrf:
-        headers["X-CSRF-Token"] = unquote(csrf)
+        headers["X-CSRF-Token"] = csrf
     return headers
 
 
@@ -47,6 +56,8 @@ def _update_csrf_token(response, account: str) -> None:
         data = store.get(key)
         if data:
             data["_csrf_token"] = new_csrf
+            if "all_cookies" in data:
+                data["all_cookies"]["_csrf_token"] = new_csrf
             store.save(key, data)
 
 
