@@ -5,6 +5,7 @@ from brokenclaw.models.instagram import (
     InstagramComment,
     InstagramDirectThread,
     InstagramFollower,
+    InstagramMediaItem,
     InstagramPost,
     InstagramProfile,
     InstagramReel,
@@ -51,6 +52,26 @@ def _parse_post(item: dict) -> InstagramPost:
     if video_versions:
         media_url = video_versions[0].get("url")
 
+    # Carousel children (media_type == 8)
+    carousel_items = []
+    if item.get("media_type") == 8:
+        for child in item.get("carousel_media", []):
+            child_media_url = None
+            child_thumbnail_url = None
+            child_images = child.get("image_versions2", {})
+            child_candidates = child_images.get("candidates", [])
+            if child_candidates:
+                child_media_url = child_candidates[0].get("url")
+                child_thumbnail_url = child_media_url
+            child_videos = child.get("video_versions", [])
+            if child_videos:
+                child_media_url = child_videos[0].get("url")
+            carousel_items.append(InstagramMediaItem(
+                media_type=_media_type_str(child.get("media_type")),
+                media_url=child_media_url,
+                thumbnail_url=child_thumbnail_url,
+            ))
+
     return InstagramPost(
         post_id=str(item.get("pk", "")),
         shortcode=shortcode,
@@ -62,6 +83,7 @@ def _parse_post(item: dict) -> InstagramPost:
         comment_count=item.get("comment_count"),
         created_at=item.get("taken_at"),
         url=_post_url(shortcode),
+        carousel_items=carousel_items,
     )
 
 
@@ -383,16 +405,46 @@ def list_direct_threads(
                 participants.append(name)
 
         last_msg = None
+        last_media_type = None
+        last_media_url = None
         last_items = thread.get("items", [])
         if last_items:
             last_item = last_items[0]
             last_msg = last_item.get("text") or last_item.get("item_type")
+
+            # Extract media info from DM item
+            item_type = last_item.get("item_type")
+            media_obj = None
+            if item_type == "media":
+                media_obj = last_item.get("media")
+            elif item_type == "reel_share":
+                media_obj = (last_item.get("reel_share") or {}).get("media")
+            elif item_type == "media_share":
+                media_obj = (last_item.get("media_share") or last_item.get("media"))
+            elif item_type == "clip":
+                media_obj = (last_item.get("clip") or {}).get("clip")
+            elif item_type == "voice_media":
+                voice = last_item.get("voice_media") or {}
+                media_obj = voice.get("media")
+
+            if isinstance(media_obj, dict):
+                last_media_type = _media_type_str(media_obj.get("media_type"))
+                # Try video first, then image
+                vv = media_obj.get("video_versions", [])
+                if vv:
+                    last_media_url = vv[0].get("url")
+                else:
+                    iv = media_obj.get("image_versions2", {}).get("candidates", [])
+                    if iv:
+                        last_media_url = iv[0].get("url")
 
         threads.append(InstagramDirectThread(
             thread_id=thread.get("thread_id"),
             thread_title=thread.get("thread_title"),
             participants=participants,
             last_message_text=last_msg,
+            last_message_media_type=last_media_type,
+            last_message_media_url=last_media_url,
             last_activity_at=thread.get("last_activity_at"),
             is_group=thread.get("is_group"),
         ))

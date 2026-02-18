@@ -14,6 +14,12 @@ class InstagramProfile(BaseModel):
     external_url: str | None = None
 
 
+class InstagramMediaItem(BaseModel):
+    media_type: str | None = None
+    media_url: str | None = None
+    thumbnail_url: str | None = None
+
+
 class InstagramPost(BaseModel):
     post_id: str | None = None
     shortcode: str | None = None
@@ -25,6 +31,7 @@ class InstagramPost(BaseModel):
     comment_count: int | None = None
     created_at: int | None = None
     url: str | None = None
+    carousel_items: list[InstagramMediaItem] = []
 
 
 class InstagramComment(BaseModel):
@@ -69,6 +76,8 @@ class InstagramDirectThread(BaseModel):
     thread_title: str | None = None
     participants: list[str] = []
     last_message_text: str | None = None
+    last_message_media_type: str | None = None
+    last_message_media_url: str | None = None
     last_activity_at: int | None = None
     is_group: bool | None = None
 

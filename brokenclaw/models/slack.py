@@ -26,6 +26,15 @@ class SlackConversation(BaseModel):
     created: int | None = None
 
 
+class SlackFile(BaseModel):
+    file_id: str | None = None
+    name: str | None = None
+    title: str | None = None
+    mime_type: str | None = None
+    size: int | None = None
+    url: str | None = None
+
+
 class SlackMessage(BaseModel):
     ts: str | None = None
     user_id: str | None = None
@@ -35,6 +44,7 @@ class SlackMessage(BaseModel):
     thread_ts: str | None = None
     reply_count: int | None = None
     reactions_summary: str | None = None
+    files: list[SlackFile] = []
 
 
 class SlackSearchResult(BaseModel):

@@ -9,6 +9,7 @@ from brokenclaw.models.linkedin import (
     LinkedInExperience,
     LinkedInFullProfile,
     LinkedInMessage,
+    LinkedInMessageAttachment,
     LinkedInNotification,
     LinkedInPost,
     LinkedInProfile,
@@ -374,10 +375,45 @@ def get_conversation_messages(
             last = last_obj.get("text", "") if isinstance(last_obj, dict) else str(last_obj)
             sender_name = f"{first} {last}".strip() or None
 
+        # Attachments — best-effort extraction from various Voyager structures
+        attachments = []
+        # Try customContent.media (inline media attachments)
+        custom_content = item.get("customContent") or {}
+        if isinstance(custom_content, dict):
+            media = custom_content.get("media") or {}
+            if isinstance(media, dict) and (media.get("title") or media.get("url")):
+                attachments.append(LinkedInMessageAttachment(
+                    name=media.get("title"),
+                    media_type=media.get("mediaType"),
+                    url=media.get("url"),
+                ))
+        # Try renderContent[] (rich content cards)
+        for rc in item.get("renderContent", []):
+            if not isinstance(rc, dict):
+                continue
+            attachments.append(LinkedInMessageAttachment(
+                name=rc.get("title") or rc.get("name"),
+                media_type=rc.get("mediaType") or rc.get("type"),
+                url=rc.get("url") or rc.get("actionUrl"),
+            ))
+        # Try *attachments refs in the entity map
+        for att_ref in item.get("*attachments", []):
+            if not isinstance(att_ref, str):
+                continue
+            att = entity_map.get(att_ref, {})
+            if not isinstance(att, dict):
+                continue
+            attachments.append(LinkedInMessageAttachment(
+                name=att.get("name") or att.get("title"),
+                media_type=att.get("mediaType") or att.get("mimeType"),
+                url=att.get("url") or att.get("reference"),
+            ))
+
         messages.append(LinkedInMessage(
             sender_name=sender_name,
             text=body,
             sent_at=item.get("deliveredAt") or item.get("createdAt"),
+            attachments=attachments,
         ))
 
     return messages

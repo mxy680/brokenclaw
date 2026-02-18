@@ -6,7 +6,7 @@ from googleapiclient.errors import HttpError
 
 from brokenclaw.auth import get_gmail_credentials
 from brokenclaw.exceptions import AuthenticationError, IntegrationError, RateLimitError
-from brokenclaw.models.gmail import GmailMessage
+from brokenclaw.models.gmail import GmailAttachment, GmailMessage
 
 
 def _get_gmail_service(account: str = "default"):
@@ -35,6 +35,7 @@ def _parse_message(msg: dict) -> GmailMessage:
     """Extract a GmailMessage from the Gmail API message resource."""
     headers = {h["name"].lower(): h["value"] for h in msg["payload"].get("headers", [])}
     body = _extract_body(msg["payload"])
+    attachments = _extract_attachments(msg["payload"])
     return GmailMessage(
         id=msg["id"],
         thread_id=msg["threadId"],
@@ -44,7 +45,25 @@ def _parse_message(msg: dict) -> GmailMessage:
         date=headers.get("date", ""),
         snippet=msg.get("snippet", ""),
         body=body,
+        attachments=attachments,
     )
+
+
+def _extract_attachments(payload: dict) -> list[GmailAttachment]:
+    """Recursively extract attachment metadata from message payload."""
+    attachments = []
+    filename = payload.get("filename")
+    if filename:
+        body = payload.get("body", {})
+        attachments.append(GmailAttachment(
+            filename=filename,
+            mime_type=payload.get("mimeType"),
+            size=body.get("size"),
+            attachment_id=body.get("attachmentId"),
+        ))
+    for part in payload.get("parts", []):
+        attachments.extend(_extract_attachments(part))
+    return attachments
 
 
 def _extract_body(payload: dict) -> str | None:

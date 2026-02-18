@@ -2,6 +2,7 @@
 
 from brokenclaw.models.slack import (
     SlackConversation,
+    SlackFile,
     SlackMessage,
     SlackProfile,
     SlackSearchResult,
@@ -33,6 +34,18 @@ def _parse_message(msg: dict) -> SlackMessage:
         parts = [f":{r.get('name', '?')}: ({r.get('count', 0)})" for r in reactions[:5]]
         reactions_summary = ", ".join(parts)
 
+    files = [
+        SlackFile(
+            file_id=f.get("id"),
+            name=f.get("name"),
+            title=f.get("title"),
+            mime_type=f.get("mimetype"),
+            size=f.get("size"),
+            url=f.get("url_private"),
+        )
+        for f in msg.get("files", [])
+    ]
+
     return SlackMessage(
         ts=msg.get("ts"),
         user_id=msg.get("user"),
@@ -41,6 +54,7 @@ def _parse_message(msg: dict) -> SlackMessage:
         thread_ts=msg.get("thread_ts"),
         reply_count=msg.get("reply_count"),
         reactions_summary=reactions_summary,
+        files=files,
     )
 
 

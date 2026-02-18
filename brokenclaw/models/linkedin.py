@@ -66,10 +66,17 @@ class LinkedInConversation(BaseModel):
     unread: bool | None = None
 
 
+class LinkedInMessageAttachment(BaseModel):
+    name: str | None = None
+    media_type: str | None = None
+    url: str | None = None
+
+
 class LinkedInMessage(BaseModel):
     sender_name: str | None = None
     text: str | None = None
     sent_at: int | None = None
+    attachments: list[LinkedInMessageAttachment] = []
 
 
 class LinkedInNotification(BaseModel):
