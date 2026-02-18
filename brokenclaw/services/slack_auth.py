@@ -1,8 +1,8 @@
 """Playwright-based Slack authentication.
 
-Launches a browser, automates Slack workspace login, captures session cookies
-(the `d` cookie with `xoxd-` value) and the `xoxc-` client token from
-localStorage, then stores them in tokens.json.
+Launches a headed browser, automates SSO login (CWRU CAS), waits for Duo MFA,
+then captures the `d` cookie (xoxd-) and `xoxc-` client token from localStorage.
+The only manual step is approving the Duo push notification.
 """
 
 import asyncio
@@ -15,56 +15,96 @@ from brokenclaw.exceptions import AuthenticationError
 
 
 async def _run_login_flow(workspace_url: str, email: str, password: str) -> dict:
-    """Launch headless Chromium, automate Slack login, capture session."""
+    """Launch headed Chromium, automate SSO login, wait for Duo MFA, capture session."""
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            viewport={"width": 1280, "height": 720},
-        )
+        browser = await p.chromium.launch(headless=False)
+        context = await browser.new_context()
         page = await context.new_page()
 
         print(f"[slack] Navigating to {workspace_url}...")
         await page.goto(workspace_url, wait_until="domcontentloaded")
-        await page.wait_for_load_state("networkidle")
+        await page.wait_for_load_state("load")
 
-        # Slack may redirect to a sign-in page — look for email input
-        print("[slack] Looking for sign-in form...")
+        # --- Phase 1: Fill credentials (SSO/CAS or Slack-native) ---
+        print("[slack] Looking for login form...")
         try:
-            # Slack workspace sign-in: email first
-            email_input = page.locator('input[type="email"], input[name="email"], input#email')
-            if await email_input.count() > 0:
-                print("[slack] Filling email...")
-                await email_input.first.fill(email)
-                await page.wait_for_timeout(500)
+            # Wait for any login form to appear
+            await page.wait_for_selector(
+                'input[name="username"], input#username, '
+                'input[type="email"], input[name="email"], input#email',
+                timeout=15000,
+            )
 
-                # Click continue/sign-in button
-                submit_btn = page.locator('button[type="submit"], button:has-text("Continue"), button:has-text("Sign In"), button:has-text("Next")')
-                if await submit_btn.count() > 0:
-                    await submit_btn.first.click()
-                    await page.wait_for_timeout(2000)
+            # SSO/CAS form (e.g. CWRU) — uses username/password fields
+            sso_username = page.locator('input[name="username"], input#username')
+            if await sso_username.count() > 0:
+                print("[slack] Detected SSO login form, filling credentials...")
+                await sso_username.first.fill(email)
+                await page.fill('input[name="password"], input#password', password)
+            else:
+                # Slack-native email/password form
+                print("[slack] Detected Slack login form, filling credentials...")
+                email_input = page.locator('input[type="email"], input[name="email"], input#email')
+                if await email_input.count() > 0:
+                    await email_input.first.fill(email)
+                    await page.wait_for_timeout(500)
+                    submit_btn = page.locator(
+                        'button[type="submit"], button:has-text("Continue"), '
+                        'button:has-text("Sign In"), button:has-text("Next")'
+                    )
+                    if await submit_btn.count() > 0:
+                        await submit_btn.first.click()
+                        await page.wait_for_timeout(2000)
 
-            # Password screen
-            password_input = page.locator('input[type="password"], input[name="password"], input#password')
-            if await password_input.count() > 0:
-                print("[slack] Filling password...")
-                await password_input.first.fill(password)
-                await page.wait_for_timeout(500)
+                password_input = page.locator('input[type="password"], input[name="password"]')
+                if await password_input.count() > 0:
+                    await password_input.first.fill(password)
 
-                submit_btn = page.locator('button[type="submit"], button:has-text("Sign In"), button:has-text("Sign in")')
-                if await submit_btn.count() > 0:
-                    await submit_btn.first.click()
-                    print("[slack] Credentials submitted...")
+            # Click submit
+            submit = page.locator(
+                'button[type="submit"], input[type="submit"], '
+                'button[name="submit"], input[name="submit"], '
+                'button:has-text("Login"), button:has-text("Log In"), '
+                'button:has-text("Sign In"), button:has-text("Sign in"), '
+                'input[value="Login"], input[value="LOG IN"], '
+                '.btn-submit, #submit'
+            )
+            if await submit.count() > 0:
+                await submit.first.click()
+                print("[slack] Credentials submitted, waiting for Duo MFA...")
+            else:
+                print("[slack] No submit button found, pressing Enter...")
+                await page.keyboard.press("Enter")
+                print("[slack] Credentials submitted, waiting for Duo MFA...")
+
         except Exception as e:
             print(f"[slack] Login form error: {e}")
-            # Fall through to headed fallback below
+            print(f"[slack] Current URL: {page.url}")
+            print("[slack] Complete login manually in the browser window...")
 
-        # Wait for Slack app to load and localStorage to populate
-        print("[slack] Waiting for Slack app to load...")
+        # --- Phase 2: Wait for Duo MFA + Slack app to load ---
+        trust_clicked = False
         xoxc_token = None
         d_cookie = None
 
-        for i in range(120):
+        for i in range(300):  # 5 minutes
+            # Auto-click "Yes, this is my device" trust button after Duo
+            if not trust_clicked:
+                try:
+                    trust_btn = page.locator(
+                        'button:has-text("Yes, this is my device"), '
+                        'button:has-text("Trust"), '
+                        'button:has-text("Yes"), '
+                        'button#trust-browser-button, '
+                        'input[value="Yes, this is my device"]'
+                    )
+                    if await trust_btn.first.is_visible(timeout=500):
+                        await trust_btn.first.click()
+                        trust_clicked = True
+                        print("[slack] Clicked 'Yes, this is my device'")
+                except Exception:
+                    pass
+
             # Try to extract xoxc token from localStorage
             try:
                 token = await page.evaluate("""
@@ -97,143 +137,15 @@ async def _run_login_flow(workspace_url: str, email: str, password: str) -> dict
                 print("[slack] Login complete! Got both xoxc token and d cookie.")
                 break
 
-            # Handle any 2FA / challenge pages
-            current_url = page.url
-            if "challenge" in current_url or "confirm" in current_url:
-                print(f"[slack] Challenge detected: {current_url}")
-                await browser.close()
-                return await _run_login_flow_headed(workspace_url, email, password)
-
-            if i % 15 == 0 and i > 0:
-                print(f"[slack] Still waiting... ({i}s, URL: {current_url[:80]})")
-
-            await page.wait_for_timeout(1000)
-        else:
-            # If we didn't get the token in headless, try headed
-            if not xoxc_token or not d_cookie:
-                print("[slack] Headless login didn't capture token — trying headed browser...")
-                await browser.close()
-                return await _run_login_flow_headed(workspace_url, email, password)
-
-        # Capture all cookies
-        raw_cookies = await context.cookies()
-        cookie_map = {c["name"]: c["value"] for c in raw_cookies}
-        cookie_details = [
-            {"name": c["name"], "value": c["value"], "domain": c["domain"], "path": c["path"]}
-            for c in raw_cookies
-        ]
-
-        # Extract team_id and user_id from token validation
-        team_id = None
-        user_id = None
-        try:
-            auth_info = await page.evaluate("""
-                () => {
-                    try {
-                        const config = JSON.parse(localStorage.getItem('localConfig_v2'));
-                        if (config && config.teams) {
-                            const teamKeys = Object.keys(config.teams);
-                            if (teamKeys.length > 0) {
-                                const team = config.teams[teamKeys[0]];
-                                return { team_id: teamKeys[0], user_id: team.user_id || null };
-                            }
-                        }
-                    } catch (e) {}
-                    return {};
-                }
-            """)
-            team_id = auth_info.get("team_id")
-            user_id = auth_info.get("user_id")
-        except Exception:
-            pass
-
-        await browser.close()
-
-    return {
-        "xoxc_token": xoxc_token,
-        "d_cookie": d_cookie,
-        "team_id": team_id,
-        "user_id": user_id,
-        "all_cookies": cookie_map,
-        "cookie_details": cookie_details,
-    }
-
-
-async def _run_login_flow_headed(workspace_url: str, email: str, password: str) -> dict:
-    """Fallback: launch a visible browser for challenges that require manual input."""
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
-        context = await browser.new_context()
-        page = await context.new_page()
-
-        print("[slack] Launching visible browser for manual login...")
-        await page.goto(workspace_url, wait_until="domcontentloaded")
-        await page.wait_for_load_state("networkidle")
-
-        # Try to fill credentials
-        try:
-            email_input = page.locator('input[type="email"], input[name="email"], input#email')
-            if await email_input.count() > 0:
-                await email_input.first.fill(email)
-                await page.wait_for_timeout(500)
-                submit_btn = page.locator('button[type="submit"], button:has-text("Continue"), button:has-text("Sign In"), button:has-text("Next")')
-                if await submit_btn.count() > 0:
-                    await submit_btn.first.click()
-                    await page.wait_for_timeout(2000)
-
-            password_input = page.locator('input[type="password"], input[name="password"], input#password')
-            if await password_input.count() > 0:
-                await password_input.first.fill(password)
-                await page.wait_for_timeout(500)
-                submit_btn = page.locator('button[type="submit"], button:has-text("Sign In"), button:has-text("Sign in")')
-                if await submit_btn.count() > 0:
-                    await submit_btn.first.click()
-        except Exception:
-            pass
-
-        print("[slack] Complete any verification in the browser window...")
-
-        xoxc_token = None
-        d_cookie = None
-
-        for i in range(300):
-            try:
-                token = await page.evaluate("""
-                    () => {
-                        try {
-                            const config = JSON.parse(localStorage.getItem('localConfig_v2'));
-                            if (config && config.teams) {
-                                const teamKeys = Object.keys(config.teams);
-                                if (teamKeys.length > 0) {
-                                    return config.teams[teamKeys[0]].token || null;
-                                }
-                            }
-                        } catch (e) {}
-                        return null;
-                    }
-                """)
-                if token and token.startswith("xoxc-"):
-                    xoxc_token = token
-            except Exception:
-                pass
-
-            cookies = await context.cookies()
-            cookie_map = {c["name"]: c["value"] for c in cookies}
-            if "d" in cookie_map and cookie_map["d"].startswith("xoxd-"):
-                d_cookie = cookie_map["d"]
-
-            if xoxc_token and d_cookie:
-                print("[slack] Login complete!")
-                break
-
             if i % 30 == 0 and i > 0:
-                print(f"[slack] Still waiting... ({i}s)")
+                print(f"[slack] Still waiting... ({i}s, URL: {page.url[:80]})")
 
             await page.wait_for_timeout(1000)
         else:
             await browser.close()
             raise AuthenticationError("Slack login timed out after 5 minutes.")
 
+        # --- Phase 3: Capture session data ---
         raw_cookies = await context.cookies()
         cookie_map = {c["name"]: c["value"] for c in raw_cookies}
         cookie_details = [
