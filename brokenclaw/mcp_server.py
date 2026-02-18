@@ -15,6 +15,7 @@ from brokenclaw.services import calendar as calendar_service
 from brokenclaw.services import news as news_service
 from brokenclaw.services import github as github_service
 from brokenclaw.services import wolfram as wolfram_service
+from brokenclaw.services import canvas as canvas_service
 
 mcp = FastMCP("Brokenclaw")
 
@@ -879,6 +880,30 @@ def wolfram_short_answer(input: str, units: str = "imperial") -> dict:
         return _handle_mcp_error(e)
 
 
+
+# --- Canvas tools ---
+
+@mcp.tool
+def canvas_upcoming(days: int = 14) -> dict:
+    """Get upcoming Canvas LMS assignments and events within the next N days (default 14).
+    Returns assignment names, due dates, course names, and Canvas URLs.
+    Great for checking what's due soon."""
+    try:
+        return canvas_service.get_upcoming(days).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def canvas_all_events() -> dict:
+    """Get all Canvas LMS assignments and events from the calendar feed.
+    Includes past and future items, sorted chronologically."""
+    try:
+        return canvas_service.get_all_events().model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
 # --- Status tool ---
 
 @mcp.tool
@@ -917,5 +942,10 @@ def brokenclaw_status() -> dict:
     integrations["wolfram"] = {
         "authenticated_accounts": ["app_id"] if wolfram_id else [],
         "message": "AppID configured" if wolfram_id else "No AppID — get one at developer.wolframalpha.com and set WOLFRAM_APP_ID in .env",
+    }
+    canvas_url = get_settings().canvas_feed_url
+    integrations["canvas"] = {
+        "authenticated_accounts": ["ical_feed"] if canvas_url else [],
+        "message": "iCal feed URL configured" if canvas_url else "No feed URL — set CANVAS_FEED_URL in .env (get from Canvas > Calendar > Calendar Feed)",
     }
     return {"integrations": integrations}

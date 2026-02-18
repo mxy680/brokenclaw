@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     news_api_key: str = ""
     github_token: str = ""
     wolfram_app_id: str = ""
+    canvas_feed_url: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
