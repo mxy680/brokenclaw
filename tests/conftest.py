@@ -52,3 +52,8 @@ requires_calendar = pytest.mark.skipif(
     not _is_authenticated("calendar"),
     reason="Calendar not authenticated — run /auth/calendar/setup first",
 )
+
+requires_contacts = pytest.mark.skipif(
+    not _is_authenticated("contacts"),
+    reason="Contacts not authenticated — run /auth/contacts/setup first",
+)
