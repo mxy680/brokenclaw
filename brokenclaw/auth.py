@@ -39,6 +39,12 @@ INTEGRATION_SCOPES = {
         "https://www.googleapis.com/auth/forms.body",
         "https://www.googleapis.com/auth/forms.responses.readonly",
     ],
+    "youtube": [
+        "https://www.googleapis.com/auth/youtube.readonly",
+    ],
+    "calendar": [
+        "https://www.googleapis.com/auth/calendar",
+    ],
 }
 
 SUPPORTED_INTEGRATIONS = set(INTEGRATION_SCOPES.keys())
@@ -156,6 +162,14 @@ def get_tasks_credentials(account: str = "default") -> Credentials:
 
 def get_forms_credentials(account: str = "default") -> Credentials:
     return _get_credentials("forms", account)
+
+
+def get_youtube_credentials(account: str = "default") -> Credentials:
+    return _get_credentials("youtube", account)
+
+
+def get_calendar_credentials(account: str = "default") -> Credentials:
+    return _get_credentials("calendar", account)
 
 
 # --- Auth router ---

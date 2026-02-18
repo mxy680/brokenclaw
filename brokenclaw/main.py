@@ -19,6 +19,7 @@ from brokenclaw.routers.tasks import router as tasks_router
 from brokenclaw.routers.forms import router as forms_router
 from brokenclaw.routers.maps import router as maps_router
 from brokenclaw.routers.youtube import router as youtube_router
+from brokenclaw.routers.calendar import router as calendar_router
 
 
 # --- Localhost-only middleware ---
@@ -47,6 +48,7 @@ api.include_router(tasks_router)
 api.include_router(forms_router)
 api.include_router(maps_router)
 api.include_router(youtube_router)
+api.include_router(calendar_router)
 
 
 @api.get("/api/status")

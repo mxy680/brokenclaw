@@ -47,3 +47,8 @@ requires_youtube = pytest.mark.skipif(
     not _is_authenticated("youtube"),
     reason="YouTube not authenticated — run /auth/youtube/setup first",
 )
+
+requires_calendar = pytest.mark.skipif(
+    not _is_authenticated("calendar"),
+    reason="Calendar not authenticated — run /auth/calendar/setup first",
+)

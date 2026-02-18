@@ -11,6 +11,7 @@ from brokenclaw.services import tasks as tasks_service
 from brokenclaw.services import forms as forms_service
 from brokenclaw.services import maps as maps_service
 from brokenclaw.services import youtube as youtube_service
+from brokenclaw.services import calendar as calendar_service
 
 mcp = FastMCP("Brokenclaw")
 
@@ -584,6 +585,114 @@ def youtube_list_playlist_items(playlist_id: str, max_results: int = 50, account
     try:
         items = youtube_service.list_playlist_items(playlist_id, max_results, account=account)
         return {"items": [i.model_dump() for i in items], "count": len(items)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+# --- Calendar tools ---
+
+@mcp.tool
+def calendar_list_calendars(max_results: int = 50, account: str = "default") -> dict:
+    """List all Google Calendars the user has access to. Returns calendar names, IDs, and time zones.
+    The primary calendar ID is typically the user's email address."""
+    try:
+        calendars = calendar_service.list_calendars(max_results, account=account)
+        return {"calendars": [c.model_dump() for c in calendars], "count": len(calendars)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def calendar_list_events(
+    calendar_id: str = "primary",
+    max_results: int = 25,
+    time_min: str | None = None,
+    time_max: str | None = None,
+    query: str | None = None,
+    account: str = "default",
+) -> dict:
+    """List upcoming calendar events. Defaults to events from now onward.
+    Use 'primary' for the user's main calendar. time_min/time_max in RFC 3339 format.
+    Use query to search event titles/descriptions (e.g. 'meeting')."""
+    try:
+        events = calendar_service.list_events(calendar_id, max_results, time_min, time_max, query, account=account)
+        return {"events": [e.model_dump() for e in events], "count": len(events)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def calendar_get_event(event_id: str, calendar_id: str = "primary", account: str = "default") -> dict:
+    """Get a specific calendar event by its event ID. Returns full event details including attendees."""
+    try:
+        return calendar_service.get_event(calendar_id, event_id, account=account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def calendar_create_event(
+    summary: str,
+    start_datetime: str,
+    end_datetime: str,
+    calendar_id: str = "primary",
+    description: str | None = None,
+    location: str | None = None,
+    time_zone: str | None = None,
+    attendees: list[str] | None = None,
+    account: str = "default",
+) -> dict:
+    """Create a new calendar event. start_datetime and end_datetime in RFC 3339 format
+    (e.g. '2025-03-01T09:00:00-05:00'). Optionally provide time_zone (e.g. 'America/New_York'),
+    description, location, and attendee email addresses."""
+    try:
+        return calendar_service.create_event(
+            summary, start_datetime, end_datetime, calendar_id,
+            description, location, time_zone, attendees, account=account,
+        ).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def calendar_update_event(
+    event_id: str,
+    calendar_id: str = "primary",
+    summary: str | None = None,
+    description: str | None = None,
+    location: str | None = None,
+    start_datetime: str | None = None,
+    end_datetime: str | None = None,
+    time_zone: str | None = None,
+    account: str = "default",
+) -> dict:
+    """Update an existing calendar event. Only provided fields are changed.
+    Use calendar_list_events to find the event_id first."""
+    try:
+        return calendar_service.update_event(
+            calendar_id, event_id, summary, description, location,
+            start_datetime, end_datetime, time_zone, account=account,
+        ).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def calendar_delete_event(event_id: str, calendar_id: str = "primary", account: str = "default") -> dict:
+    """Delete a calendar event by its event ID."""
+    try:
+        calendar_service.delete_event(calendar_id, event_id, account=account)
+        return {"status": "deleted", "event_id": event_id}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def calendar_quick_add(text: str, calendar_id: str = "primary", account: str = "default") -> dict:
+    """Create a calendar event from natural language text. Google parses the text to extract
+    event details. Examples: 'Meeting with Bob tomorrow at 3pm', 'Lunch at noon on Friday at Cafe Roma'."""
+    try:
+        return calendar_service.quick_add_event(text, calendar_id, account=account).model_dump()
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 
