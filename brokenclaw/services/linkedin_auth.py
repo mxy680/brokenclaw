@@ -62,27 +62,54 @@ async def _run_login_flow(username: str, password: str) -> dict:
                 "LinkedIn login timed out after 5 minutes."
             )
 
-        # Validate session via Voyager API
+        # Capture cookies with full metadata (domain, path, etc.)
+        raw_cookies = await context.cookies()
+        cookie_map = {c["name"]: c["value"] for c in raw_cookies}
+
+        # Validate session via in-page fetch (preserves browser session context)
         print("[linkedin] Validating session via Voyager API...")
-        response = await page.goto(
-            "https://www.linkedin.com/voyager/api/me",
-            wait_until="domcontentloaded",
-        )
-        status = response.status if response else 0
-        body = await page.inner_text("body")
+        jsessionid = cookie_map.get("JSESSIONID", "")
+        csrf_token = jsessionid.strip('"')
+
+        validation = await page.evaluate("""
+            async (csrfToken) => {
+                try {
+                    const resp = await fetch('/voyager/api/me', {
+                        headers: {
+                            'Csrf-Token': csrfToken,
+                            'X-Restli-Protocol-Version': '2.0.0',
+                            'Accept': 'application/vnd.linkedin.normalized+json+2.1',
+                        },
+                        credentials: 'include',
+                    });
+                    const text = await resp.text();
+                    return { status: resp.status, body: text.substring(0, 2000) };
+                } catch (e) {
+                    return { status: 0, body: e.message };
+                }
+            }
+        """, csrf_token)
+
+        status = validation.get("status", 0)
+        body = validation.get("body", "")
 
         if status == 200:
             print(f"[linkedin] API validation OK! Profile: {body[:100]}")
         else:
             print(f"[linkedin] API returned {status}: {body[:300]}")
 
-        # Capture final cookies
-        cookies = await context.cookies()
-        cookie_map = {c["name"]: c["value"] for c in cookies}
+        # Re-capture cookies after API call
+        raw_cookies = await context.cookies()
+        cookie_map = {c["name"]: c["value"] for c in raw_cookies}
+
+        # Also store raw cookies with domain info for proper reconstruction
+        cookie_details = [
+            {"name": c["name"], "value": c["value"], "domain": c["domain"], "path": c["path"]}
+            for c in raw_cookies
+        ]
 
         await browser.close()
 
-    # Extract JSESSIONID and derive csrf_token (JSESSIONID without quotes)
     jsessionid = cookie_map.get("JSESSIONID", "")
     csrf_token = jsessionid.strip('"')
 
@@ -91,7 +118,9 @@ async def _run_login_flow(username: str, password: str) -> dict:
         "JSESSIONID": jsessionid,
         "csrf_token": csrf_token,
         "all_cookies": cookie_map,
+        "cookie_details": cookie_details,
         "api_status": status,
+        "api_body": body[:500] if status == 200 else "",
     }
     return session_data
 

@@ -2,19 +2,24 @@
 
 Uses session cookies captured by linkedin_auth.py. Handles Voyager-specific
 response format with `included` entities and `start`/`count` pagination.
+
+Uses curl_cffi with browser TLS fingerprint impersonation — LinkedIn rejects
+requests from standard HTTP libraries (requests, httpx) by detecting
+non-browser TLS fingerprints and invalidating the session.
+
+Response cookies (especially __cf_bm from Cloudflare) are persisted back to
+the token store after each request so subsequent calls stay authenticated.
 """
 
+import re
+
+from curl_cffi import requests as curl_requests
+
+from brokenclaw.auth import _get_token_store, _token_key
 from brokenclaw.exceptions import AuthenticationError, IntegrationError, RateLimitError
-from brokenclaw.http_client import get_session
 from brokenclaw.services.linkedin_auth import get_linkedin_session
 
 BASE_URL = "https://www.linkedin.com/voyager/api"
-
-_USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/120.0.0.0 Safari/537.36"
-)
 
 
 def _build_headers(session_data: dict) -> dict:
@@ -33,13 +38,40 @@ def _build_headers(session_data: dict) -> dict:
         "X-Restli-Protocol-Version": "2.0.0",
         "X-Li-Lang": "en_US",
         "Accept": "application/vnd.linkedin.normalized+json+2.1",
-        "User-Agent": _USER_AGENT,
+        "Referer": "https://www.linkedin.com/feed/",
+        "Origin": "https://www.linkedin.com",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
     }
+
+
+def _update_cookies(response, account: str) -> None:
+    """Persist any Set-Cookie values (especially __cf_bm) back to the token store."""
+    new_cookies = {}
+    set_cookie_headers = []
+    for k, v in response.headers.items():
+        if k.lower() == "set-cookie":
+            set_cookie_headers.append(v)
+
+    for cookie_str in set_cookie_headers:
+        match = re.match(r"([^=]+)=([^;]*)", cookie_str)
+        if match:
+            name, value = match.group(1).strip(), match.group(2).strip()
+            new_cookies[name] = value
+
+    if new_cookies:
+        store = _get_token_store()
+        key = _token_key("linkedin", account)
+        data = store.get(key)
+        if data and "all_cookies" in data:
+            data["all_cookies"].update(new_cookies)
+            store.save(key, data)
 
 
 def _handle_response(response):
     """Check response status and raise appropriate exceptions."""
-    if response.status_code == 401:
+    if response.status_code in (401, 302):
         raise AuthenticationError(
             "LinkedIn session expired. Visit /auth/linkedin/setup to re-authenticate."
         )
@@ -69,16 +101,28 @@ def linkedin_get(
     path: str,
     account: str = "default",
     params: dict | None = None,
+    raw_qs: str | None = None,
 ) -> dict:
     """Make an authenticated GET request to the LinkedIn Voyager API.
 
     path should be relative to /voyager/api/ (e.g. 'me').
+    Use raw_qs for pre-formatted query strings (needed for GraphQL endpoints
+    where LinkedIn expects literal parentheses, not URL-encoded).
     """
     session_data = get_linkedin_session(account)
     url = f"{BASE_URL}/{path.lstrip('/')}"
+    if raw_qs:
+        url = f"{url}?{raw_qs}"
     headers = _build_headers(session_data)
 
-    resp = get_session().get(url, headers=headers, params=params)
+    resp = curl_requests.get(
+        url,
+        headers=headers,
+        params=params if not raw_qs else None,
+        impersonate="chrome",
+        allow_redirects=False,
+    )
+    _update_cookies(resp, account)
     _handle_response(resp)
     return resp.json()
 
@@ -106,7 +150,19 @@ def linkedin_get_paginated(
     for _ in range(max_pages):
         page_params["start"] = start
         url = f"{BASE_URL}/{path.lstrip('/')}"
-        resp = get_session().get(url, headers=headers, params=page_params)
+
+        # Re-read session data each page to pick up cookie updates
+        session_data = get_linkedin_session(account)
+        headers = _build_headers(session_data)
+
+        resp = curl_requests.get(
+            url,
+            headers=headers,
+            params=page_params,
+            impersonate="chrome",
+            allow_redirects=False,
+        )
+        _update_cookies(resp, account)
         _handle_response(resp)
 
         data = resp.json()

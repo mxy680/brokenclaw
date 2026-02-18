@@ -122,10 +122,15 @@ For Claude Code, add to MCP settings:
 - OAuth client is a **web** type (not desktop) — uses redirect-based flow
 - `OAUTHLIB_RELAX_TOKEN_SCOPE` is set to handle Google returning broader scopes
 - API-key integrations use `requests` library directly (not googleapiclient)
-- `requests`, `icalendar`, and `playwright` are explicit dependencies in pyproject.toml
+- `requests`, `icalendar`, `playwright`, and `curl_cffi` are explicit dependencies in pyproject.toml
 - Canvas uses Playwright for browser-based session auth (SSO + Duo MFA); session cookies stored in `tokens.json` under `"canvas"` key
 - Canvas REST API client uses session cookies + CSRF token rotation, not OAuth
 - Canvas auth routes are defined **before** generic `/{integration}` routes in `auth.py` to prevent path conflicts
 - LinkedIn uses Playwright for browser-based login; session cookies (`li_at`, `JSESSIONID`) stored in `tokens.json` under `"linkedin"` key
 - LinkedIn Voyager API uses `Csrf-Token` header (JSESSIONID without quotes), `X-Restli-Protocol-Version: 2.0.0`, and normalized+json accept header
+- LinkedIn requires `curl_cffi` with Chrome TLS impersonation — standard `requests`/`httpx` get detected and session invalidated
+- LinkedIn Voyager API has migrated most REST endpoints to GraphQL (`/voyager/api/graphql?queryId=...&variables=(...)`) — GraphQL params need literal parentheses (not URL-encoded), hence `raw_qs` parameter on `linkedin_get()`
+- LinkedIn response cookies (especially `__cf_bm` from Cloudflare) must be persisted back to token store after each request
+- LinkedIn `get_full_profile()` returns basic profile info but experience/education/skills are empty — LinkedIn serves section data via server-side rendering, not the Voyager API
+- LinkedIn job search uses REST endpoint `voyagerJobsDashJobCards`, not the GraphQL search endpoint used by people/company search
 - LinkedIn and Canvas auth routes are both defined **before** generic `/{integration}` routes in `auth.py`

@@ -18,7 +18,6 @@ from brokenclaw.models.linkedin import (
 from brokenclaw.services.linkedin_client import (
     _extract_voyager_entities,
     linkedin_get,
-    linkedin_get_paginated,
 )
 
 
@@ -47,15 +46,17 @@ def _get_profile_url(public_id: str | None) -> str | None:
 def get_my_profile(account: str = "default") -> LinkedInProfile:
     """Get the authenticated user's profile."""
     data = linkedin_get("me", account)
-    mini = data.get("miniProfile") or data
-    public_id = mini.get("publicIdentifier") or data.get("publicIdentifier")
+    # Profile data is in the included array as a MiniProfile entity
+    mini = _extract_voyager_entities(data, "MiniProfile")
+    mini = mini[0] if mini else {}
+    public_id = mini.get("publicIdentifier")
     return LinkedInProfile(
-        entity_urn=data.get("entityUrn") or mini.get("entityUrn"),
-        first_name=mini.get("firstName") or data.get("firstName"),
-        last_name=mini.get("lastName") or data.get("lastName"),
-        headline=mini.get("headline") or data.get("headline"),
-        summary=data.get("summary"),
-        location=mini.get("locationName") or data.get("locationName"),
+        entity_urn=mini.get("entityUrn") or mini.get("dashEntityUrn"),
+        first_name=mini.get("firstName"),
+        last_name=mini.get("lastName"),
+        headline=mini.get("occupation") or mini.get("headline"),
+        summary=mini.get("summary"),
+        location=mini.get("locationName"),
         profile_url=_get_profile_url(public_id),
     )
 
@@ -64,77 +65,66 @@ def get_full_profile(
     public_id: str,
     account: str = "default",
 ) -> LinkedInFullProfile:
-    """Get a full profile by public ID (the slug in linkedin.com/in/{slug})."""
-    # Basic profile info
-    data = linkedin_get(f"identity/profiles/{public_id}", account)
+    """Get a full profile by public ID (the slug in linkedin.com/in/{slug}).
+
+    Uses the GraphQL profile endpoint since the old identity/profiles
+    endpoint returns 410.
+    """
+    # Basic profile via graphql
+    qs = f"includeWebMetadata=true&variables=(vanityName:{public_id})&queryId=voyagerIdentityDashProfiles.34ead06db82a2cc9a778fac97f69ad6a"
+    data = linkedin_get("graphql", account, raw_qs=qs)
+
+    included = data.get("included", [])
+    profile_data = {}
+    experience = []
+    education = []
+    skills = []
+
+    for item in included:
+        type_name = item.get("$type", "")
+
+        if type_name.endswith("Profile"):
+            if not profile_data or item.get("firstName"):
+                profile_data = item
+
+        if type_name.endswith("Position") or ("title" in item and "companyName" in item):
+            tp = item.get("timePeriod") or item.get("dateRange") or {}
+            experience.append(LinkedInExperience(
+                title=item.get("title"),
+                company_name=item.get("companyName"),
+                location=item.get("locationName"),
+                start_date=_format_date(tp.get("startDate") or tp.get("start")),
+                end_date=_format_date(tp.get("endDate") or tp.get("end")),
+                description=item.get("description"),
+            ))
+
+        if type_name.endswith("Education") or "schoolName" in item or "degreeName" in item:
+            tp = item.get("timePeriod") or item.get("dateRange") or {}
+            sd = tp.get("startDate") or tp.get("start") or {}
+            ed = tp.get("endDate") or tp.get("end") or {}
+            education.append(LinkedInEducation(
+                school_name=item.get("schoolName"),
+                degree=item.get("degreeName"),
+                field_of_study=item.get("fieldOfStudy"),
+                start_year=sd.get("year") if isinstance(sd, dict) else None,
+                end_year=ed.get("year") if isinstance(ed, dict) else None,
+            ))
+
+        if type_name.endswith("Skill") and "name" in item:
+            skills.append(LinkedInSkill(
+                name=item.get("name"),
+                endorsement_count=item.get("endorsementCount"),
+            ))
+
     profile = LinkedInProfile(
-        entity_urn=data.get("entityUrn"),
-        first_name=data.get("firstName"),
-        last_name=data.get("lastName"),
-        headline=data.get("headline"),
-        summary=data.get("summary"),
-        location=data.get("locationName") or data.get("geoLocationName"),
+        entity_urn=profile_data.get("entityUrn") or profile_data.get("dashEntityUrn"),
+        first_name=profile_data.get("firstName"),
+        last_name=profile_data.get("lastName"),
+        headline=profile_data.get("headline") or profile_data.get("occupation"),
+        summary=profile_data.get("summary"),
+        location=profile_data.get("locationName") or profile_data.get("geoLocationName"),
         profile_url=_get_profile_url(public_id),
     )
-
-    # Experience
-    experience = []
-    try:
-        exp_data = linkedin_get(
-            f"identity/profiles/{public_id}/positions",
-            account,
-            params={"count": 50},
-        )
-        for elem in exp_data.get("included", []):
-            if "title" in elem or "companyName" in elem:
-                experience.append(LinkedInExperience(
-                    title=elem.get("title"),
-                    company_name=elem.get("companyName"),
-                    location=elem.get("locationName"),
-                    start_date=_format_date(elem.get("timePeriod", {}).get("startDate")),
-                    end_date=_format_date(elem.get("timePeriod", {}).get("endDate")),
-                    description=elem.get("description"),
-                ))
-    except Exception:
-        pass
-
-    # Education
-    education = []
-    try:
-        edu_data = linkedin_get(
-            f"identity/profiles/{public_id}/educations",
-            account,
-            params={"count": 50},
-        )
-        for elem in edu_data.get("included", []):
-            if "schoolName" in elem or "degreeName" in elem:
-                tp = elem.get("timePeriod", {})
-                education.append(LinkedInEducation(
-                    school_name=elem.get("schoolName"),
-                    degree=elem.get("degreeName"),
-                    field_of_study=elem.get("fieldOfStudy"),
-                    start_year=tp.get("startDate", {}).get("year") if tp.get("startDate") else None,
-                    end_year=tp.get("endDate", {}).get("year") if tp.get("endDate") else None,
-                ))
-    except Exception:
-        pass
-
-    # Skills
-    skills = []
-    try:
-        skill_data = linkedin_get(
-            f"identity/profiles/{public_id}/skills",
-            account,
-            params={"count": 50},
-        )
-        for elem in skill_data.get("included", []):
-            if "name" in elem and elem.get("$type", "").endswith("Skill"):
-                skills.append(LinkedInSkill(
-                    name=elem.get("name"),
-                    endorsement_count=elem.get("endorsementCount"),
-                ))
-    except Exception:
-        pass
 
     return LinkedInFullProfile(
         profile=profile,
@@ -148,68 +138,77 @@ def get_full_profile(
 
 
 def get_feed(count: int = 20, account: str = "default") -> list[LinkedInPost]:
-    """Get the user's LinkedIn feed posts."""
-    data = linkedin_get(
-        "feed/updatesV2",
-        account,
-        params={"q": "FEED_TYPE_FOLLOWED", "count": count},
-    )
+    """Get the user's LinkedIn feed posts.
+
+    Uses the voyagerFeedDashMainFeed GraphQL endpoint.
+    """
+    qs = f"includeWebMetadata=true&variables=(start:0,count:{count},sortOrder:RELEVANCE)&queryId=voyagerFeedDashMainFeed.923020905727c01516495a0ac90bb475"
+    try:
+        data = linkedin_get("graphql", account, raw_qs=qs)
+    except Exception:
+        return []
 
     posts = []
-    # Build a lookup of included entities by entityUrn
-    included_map = {}
-    for item in data.get("included", []):
+    included = data.get("included", [])
+
+    # Build entity map for cross-referencing
+    entity_map = {}
+    for item in included:
         urn = item.get("entityUrn") or item.get("$id")
         if urn:
-            included_map[urn] = item
+            entity_map[urn] = item
 
-    for item in data.get("included", []):
+    # Extract updates
+    for item in included:
         type_name = item.get("$type", "")
-
-        # Look for activity/update entities
-        if "Activity" not in type_name and "Update" not in type_name:
+        if not type_name.endswith("Update"):
             continue
 
-        # Try to extract post text from commentary or various fields
+        # Extract post text from commentary
         text = None
-        commentary = item.get("commentary") or item.get("specificContent", {}).get("com.linkedin.ugc.ShareContent", {}).get("shareCommentary", {})
+        commentary = item.get("commentary") or {}
         if isinstance(commentary, dict):
-            text = commentary.get("text")
-        elif isinstance(commentary, str):
-            text = commentary
-
-        if not text:
-            text = item.get("text") or item.get("message")
-
+            text_obj = commentary.get("text") or {}
+            if isinstance(text_obj, dict):
+                text = text_obj.get("text")
+            elif isinstance(text_obj, str):
+                text = text_obj
         if not text:
             continue
 
-        # Extract author info
+        # Author info — actor is an inline component object in modern feed
         author_name = None
-        actor = item.get("actor") or item.get("author")
+        actor = item.get("actor") or {}
         if isinstance(actor, dict):
-            author_name = actor.get("name") or actor.get("firstName")
-        elif isinstance(actor, str) and actor in included_map:
-            actor_entity = included_map[actor]
+            name_obj = actor.get("name") or {}
+            if isinstance(name_obj, dict):
+                author_name = name_obj.get("text")
+        elif isinstance(actor, str) and actor in entity_map:
+            actor_entity = entity_map[actor]
             first = actor_entity.get("firstName", "")
             last = actor_entity.get("lastName", "")
             author_name = f"{first} {last}".strip() or actor_entity.get("name")
 
-        # Engagement counts
-        social = item.get("socialDetail") or {}
-        if isinstance(social, str) and social in included_map:
-            social = included_map[social]
+        # Social counts — follow ref chain: *socialDetail → *totalSocialActivityCounts
+        social_ref = item.get("*socialDetail")
+        social = entity_map.get(social_ref, {}) if isinstance(social_ref, str) else {}
+        counts_ref = social.get("*totalSocialActivityCounts") or social.get("totalSocialActivityCounts")
+        if isinstance(counts_ref, str) and counts_ref in entity_map:
+            counts = entity_map[counts_ref]
+        elif isinstance(counts_ref, dict):
+            counts = counts_ref
+        else:
+            counts = {}
 
-        urn = item.get("entityUrn") or item.get("urn") or ""
-        activity_id = urn.split(":")[-1] if urn else None
+        urn = item.get("entityUrn") or ""
         url = f"https://www.linkedin.com/feed/update/{urn}" if urn else None
 
         posts.append(LinkedInPost(
             author_name=author_name,
             text=text[:2000] if text else None,
-            created_at=item.get("createdAt") or item.get("created", {}).get("time"),
-            num_likes=social.get("totalSocialActivityCounts", {}).get("numLikes") if isinstance(social, dict) else None,
-            num_comments=social.get("totalSocialActivityCounts", {}).get("numComments") if isinstance(social, dict) else None,
+            created_at=item.get("createdAt"),
+            num_likes=counts.get("numLikes") if isinstance(counts, dict) else None,
+            num_comments=counts.get("numComments") if isinstance(counts, dict) else None,
             url=url,
         ))
 
@@ -238,7 +237,7 @@ def list_connections(
         connections.append(LinkedInConnection(
             first_name=p.get("firstName"),
             last_name=p.get("lastName"),
-            headline=p.get("headline"),
+            headline=p.get("occupation") or p.get("headline"),
             profile_url=_get_profile_url(public_id),
             connected_at=p.get("connectedAt"),
         ))
@@ -253,57 +252,66 @@ def list_conversations(
     count: int = 20,
     account: str = "default",
 ) -> list[LinkedInConversation]:
-    """List recent messaging conversations."""
-    data = linkedin_get(
-        "messaging/conversations",
-        account,
-        params={"keyVersion": "LEGACY_INBOX", "count": count},
-    )
+    """List recent messaging conversations.
 
-    included_map = {}
-    for item in data.get("included", []):
+    Uses the voyagerMessagingGraphQL endpoint.
+    """
+    # Get user's profile URN first
+    me = linkedin_get("me", account)
+    mini = _extract_voyager_entities(me, "MiniProfile")
+    profile_urn = mini[0].get("dashEntityUrn", "") if mini else ""
+    encoded_urn = quote(profile_urn, safe="")
+
+    qs = f"queryId=messengerConversations.0d5e6781bbee71c3e51c8843c6519f48&variables=(mailboxUrn:{encoded_urn})"
+    try:
+        data = linkedin_get("voyagerMessagingGraphQL/graphql", account, raw_qs=qs)
+    except Exception:
+        return []
+
+    included = data.get("included", [])
+    entity_map = {}
+    for item in included:
         urn = item.get("entityUrn") or item.get("$id")
         if urn:
-            included_map[urn] = item
+            entity_map[urn] = item
 
     conversations = []
-    for item in data.get("included", []):
+    for item in included:
         type_name = item.get("$type", "")
         if "Conversation" not in type_name:
             continue
 
-        # Extract participants
+        # Participants — refs in *conversationParticipants, entities have
+        # participantType.member.firstName.text / lastName.text
         participants = []
-        for p_ref in item.get("participants", []):
-            if isinstance(p_ref, dict):
-                mini = p_ref.get("com.linkedin.voyager.messaging.MessagingMember") or p_ref
-                profile = mini.get("miniProfile", {})
-                first = profile.get("firstName", "")
-                last = profile.get("lastName", "")
-                name = f"{first} {last}".strip()
-                if name:
-                    participants.append(name)
-            elif isinstance(p_ref, str) and p_ref in included_map:
-                member = included_map[p_ref]
-                profile = member.get("miniProfile", {})
-                if isinstance(profile, str) and profile in included_map:
-                    profile = included_map[profile]
-                first = profile.get("firstName", "")
-                last = profile.get("lastName", "")
+        p_refs = item.get("*conversationParticipants", item.get("conversationParticipants", []))
+        if isinstance(p_refs, list):
+            for p_ref in p_refs:
+                participant = entity_map.get(p_ref) if isinstance(p_ref, str) else p_ref
+                if not isinstance(participant, dict):
+                    continue
+                pt = participant.get("participantType") or {}
+                member = pt.get("member") or {}
+                first_obj = member.get("firstName") or {}
+                last_obj = member.get("lastName") or {}
+                first = first_obj.get("text", "") if isinstance(first_obj, dict) else str(first_obj)
+                last = last_obj.get("text", "") if isinstance(last_obj, dict) else str(last_obj)
                 name = f"{first} {last}".strip()
                 if name:
                     participants.append(name)
 
-        # Last message
+        # Last message text — from linked Message entities
         last_msg = None
-        events = item.get("events", [])
-        if events:
-            last_event = events[0] if isinstance(events[0], dict) else included_map.get(events[0], {})
-            event_content = last_event.get("eventContent") or {}
-            if isinstance(event_content, dict):
-                msg_event = event_content.get("com.linkedin.voyager.messaging.event.MessageEvent") or event_content
-                body = msg_event.get("body") or msg_event.get("attributedBody", {}).get("text")
-                last_msg = body
+        msgs = item.get("messages") or {}
+        msg_refs = msgs.get("*elements", []) if isinstance(msgs, dict) else []
+        if msg_refs:
+            msg_entity = entity_map.get(msg_refs[0]) if isinstance(msg_refs[0], str) else None
+            if isinstance(msg_entity, dict):
+                body = msg_entity.get("body")
+                if isinstance(body, dict):
+                    last_msg = body.get("text")
+                elif isinstance(body, str):
+                    last_msg = body
 
         conversations.append(LinkedInConversation(
             conversation_urn=item.get("entityUrn"),
@@ -322,60 +330,54 @@ def get_conversation_messages(
     account: str = "default",
 ) -> list[LinkedInMessage]:
     """Get messages from a specific conversation."""
-    # conversation_urn is like "urn:li:messagingThread:2-xxx"
-    # The API path uses the full URN encoded
     encoded_urn = quote(conversation_urn, safe="")
-    data = linkedin_get(
-        f"messaging/conversations/{encoded_urn}/events",
-        account,
-        params={"count": count},
-    )
+    qs = f"queryId=messengerMessages.5846eeb71c981f11e0134cb6626cc314&variables=(conversationUrn:{encoded_urn})"
+    try:
+        data = linkedin_get("voyagerMessagingGraphQL/graphql", account, raw_qs=qs)
+    except Exception:
+        return []
 
-    included_map = {}
-    for item in data.get("included", []):
+    included = data.get("included", [])
+    entity_map = {}
+    for item in included:
         urn = item.get("entityUrn") or item.get("$id")
         if urn:
-            included_map[urn] = item
+            entity_map[urn] = item
 
     messages = []
-    for item in data.get("included", []):
+    for item in included:
         type_name = item.get("$type", "")
-        if "Event" not in type_name:
+        if "Message" not in type_name and "Event" not in type_name:
             continue
 
-        event_content = item.get("eventContent") or {}
-        if isinstance(event_content, dict):
-            msg_event = event_content.get("com.linkedin.voyager.messaging.event.MessageEvent") or event_content
-            body = msg_event.get("body") or msg_event.get("attributedBody", {}).get("text")
-        else:
-            body = None
+        # Extract text
+        body = item.get("body") or item.get("text")
+        if isinstance(body, dict):
+            body = body.get("text")
+        attributed = item.get("attributedBody")
+        if not body and isinstance(attributed, dict):
+            body = attributed.get("text")
 
         if not body:
             continue
 
-        # Sender info
+        # Sender — ref to MessagingParticipant entity
         sender_name = None
-        sender_ref = item.get("from") or item.get("sender")
-        if isinstance(sender_ref, dict):
-            mini = sender_ref.get("com.linkedin.voyager.messaging.MessagingMember", {}).get("miniProfile", {})
-            if isinstance(mini, str) and mini in included_map:
-                mini = included_map[mini]
-            first = mini.get("firstName", "")
-            last = mini.get("lastName", "")
-            sender_name = f"{first} {last}".strip() or None
-        elif isinstance(sender_ref, str) and sender_ref in included_map:
-            member = included_map[sender_ref]
-            mini = member.get("miniProfile", {})
-            if isinstance(mini, str) and mini in included_map:
-                mini = included_map[mini]
-            first = mini.get("firstName", "")
-            last = mini.get("lastName", "")
+        sender_ref = item.get("*sender") or item.get("sender") or item.get("from")
+        if isinstance(sender_ref, str) and sender_ref in entity_map:
+            sender = entity_map[sender_ref]
+            pt = sender.get("participantType") or {}
+            member = pt.get("member") or {}
+            first_obj = member.get("firstName") or {}
+            last_obj = member.get("lastName") or {}
+            first = first_obj.get("text", "") if isinstance(first_obj, dict) else str(first_obj)
+            last = last_obj.get("text", "") if isinstance(last_obj, dict) else str(last_obj)
             sender_name = f"{first} {last}".strip() or None
 
         messages.append(LinkedInMessage(
             sender_name=sender_name,
             text=body,
-            sent_at=item.get("createdAt"),
+            sent_at=item.get("deliveredAt") or item.get("createdAt"),
         ))
 
     return messages
@@ -388,29 +390,32 @@ def list_notifications(
     count: int = 20,
     account: str = "default",
 ) -> list[LinkedInNotification]:
-    """List recent notifications."""
+    """List recent notifications.
+
+    Uses the voyagerIdentityDashNotificationCards endpoint.
+    """
     data = linkedin_get(
-        "notifications",
+        "voyagerIdentityDashNotificationCards",
         account,
-        params={"count": count},
+        params={
+            "decorationId": "com.linkedin.voyager.dash.deco.identity.notifications.CardsCollectionWithInjectionsNoPills-24",
+            "count": count,
+            "q": "filterVanityName",
+        },
     )
 
     notifications = []
     for item in data.get("included", []):
         type_name = item.get("$type", "")
-        if "Notification" not in type_name:
+        if not type_name.endswith("Card"):
             continue
 
-        # Extract text from headline or various fields
         headline = item.get("headline") or {}
         text = headline.get("text") if isinstance(headline, dict) else str(headline) if headline else None
 
-        if not text:
-            text = item.get("subHeadline", {}).get("text") if isinstance(item.get("subHeadline"), dict) else None
-
         notifications.append(LinkedInNotification(
             text=text,
-            notification_type=item.get("notificationType") or item.get("trackingId"),
+            notification_type=item.get("notificationType") or item.get("cardType"),
             created_at=item.get("publishedAt") or item.get("createdAt"),
             url=item.get("navigationUrl"),
         ))
@@ -428,43 +433,45 @@ def _search(
     location: str | None = None,
     account: str = "default",
 ) -> list[LinkedInSearchResult]:
-    """Search LinkedIn using the Voyager search endpoint."""
-    params: dict = {
-        "q": "all",
-        "keywords": keywords,
-        "count": count,
-        "origin": "GLOBAL_SEARCH_HEADER",
-    }
-    if type_filter:
-        params["filters"] = f"List(resultType->{type_filter})"
+    """Search LinkedIn using the GraphQL search endpoint."""
+    kw = keywords
     if location:
-        params["keywords"] = f"{keywords} {location}"
+        kw = f"{keywords} {location}"
 
-    data = linkedin_get("search/dash/clusters", account, params=params)
+    # Build graphql query string — includeFiltersInResponse goes inside query()
+    encoded_kw = kw.replace(" ", "%20")
+    query_params = f"keywords:{encoded_kw},flagshipSearchIntent:SEARCH_SRP,queryParameters:List((key:resultType,value:List({type_filter or 'PEOPLE'}))),includeFiltersInResponse:false"
+    qs = f"includeWebMetadata=true&variables=(start:0,origin:GLOBAL_SEARCH_HEADER,query:({query_params}),count:{count})&queryId=voyagerSearchDashClusters.05111e1b90ee7fea15bebe9f9410ced9"
+
+    try:
+        data = linkedin_get("graphql", account, raw_qs=qs)
+    except Exception:
+        return []
 
     results = []
     for item in data.get("included", []):
         type_name = item.get("$type", "")
 
-        # Look for search result entities
-        if "SearchHit" in type_name or "EntityResult" in type_name:
+        if "EntityResult" in type_name:
             title = item.get("title") or {}
             title_text = title.get("text") if isinstance(title, dict) else str(title) if title else None
 
-            summary = item.get("primarySubtitle") or item.get("headline") or {}
-            summary_text = summary.get("text") if isinstance(summary, dict) else str(summary) if summary else None
+            subtitle = item.get("primarySubtitle") or {}
+            subtitle_text = subtitle.get("text") if isinstance(subtitle, dict) else str(subtitle) if subtitle else None
 
-            secondary = item.get("secondarySubtitle") or item.get("subline") or {}
+            secondary = item.get("secondarySubtitle") or {}
             location_text = secondary.get("text") if isinstance(secondary, dict) else str(secondary) if secondary else None
 
-            nav_url = item.get("navigationUrl")
+            summary = item.get("summary") or {}
+            summary_text = summary.get("text") if isinstance(summary, dict) else str(summary) if summary else None
 
             results.append(LinkedInSearchResult(
                 name=title_text,
-                headline=summary_text,
+                headline=subtitle_text,
+                description=summary_text,
                 location=location_text,
                 result_type=type_filter or "UNKNOWN",
-                url=nav_url,
+                url=item.get("navigationUrl"),
             ))
 
     return results
@@ -494,5 +501,71 @@ def search_jobs(
     count: int = 10,
     account: str = "default",
 ) -> list[LinkedInSearchResult]:
-    """Search for jobs on LinkedIn."""
-    return _search(keywords, "JOBS", count, location=location, account=account)
+    """Search for jobs on LinkedIn.
+
+    Uses the voyagerJobsDashJobCards REST endpoint (separate from people/company search).
+    """
+    encoded_kw = keywords.replace(" ", "%20")
+    location_part = ""
+    if location:
+        encoded_loc = location.replace(" ", "%20")
+        location_part = f",locationUnion:(seoLocation:(location:{encoded_loc}))"
+
+    qs = (
+        f"decorationId=com.linkedin.voyager.dash.deco.jobs.search.JobSearchCardsCollection-220"
+        f"&count={count}&q=jobSearch"
+        f"&query=(origin:JOB_SEARCH_PAGE_OTHER_ENTRY,keywords:{encoded_kw}{location_part},spellCorrectionEnabled:true)"
+        f"&start=0"
+    )
+
+    try:
+        data = linkedin_get("voyagerJobsDashJobCards", account, raw_qs=qs)
+    except Exception:
+        return []
+
+    included = data.get("included", [])
+    entity_map = {}
+    for item in included:
+        urn = item.get("entityUrn") or item.get("$id")
+        if urn:
+            entity_map[urn] = item
+
+    results = []
+    for item in included:
+        if "JobPostingCard" not in item.get("$type", ""):
+            continue
+
+        title = item.get("title") or {}
+        title_text = title.get("text", "").strip() if isinstance(title, dict) else None
+        if not title_text:
+            continue
+
+        primary = item.get("primaryDescription") or {}
+        company = primary.get("text") if isinstance(primary, dict) else None
+
+        secondary = item.get("secondaryDescription") or {}
+        location_text = secondary.get("text") if isinstance(secondary, dict) else None
+
+        tertiary = item.get("tertiaryDescription") or {}
+        extra = tertiary.get("text") if isinstance(tertiary, dict) else None
+
+        # Build job URL from job posting reference
+        url = None
+        jp_ref = item.get("*jobPosting")
+        if isinstance(jp_ref, str) and jp_ref in entity_map:
+            jp = entity_map[jp_ref]
+            jp_urn = jp.get("entityUrn", "")
+            job_id = jp_urn.split(":")[-1] if jp_urn else None
+            if job_id:
+                url = f"https://www.linkedin.com/jobs/view/{job_id}/"
+
+        results.append(LinkedInSearchResult(
+            name=title_text,
+            headline=company,
+            description=extra,
+            location=location_text,
+            result_type="JOBS",
+            url=url,
+        ))
+
+    return results

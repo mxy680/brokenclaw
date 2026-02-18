@@ -15,6 +15,7 @@ dependencies = [
     "requests",
     "icalendar",
     "playwright",
+    "curl_cffi",
 ]
 
 [project.optional-dependencies]
