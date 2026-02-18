@@ -12,7 +12,7 @@ Integration server that exposes external platforms via REST API + MCP tools for 
 - **OAuth tokens** stored in `tokens.json` (gitignored), keyed by `integration:account`
 - **Multi-account** — all OAuth endpoints/tools accept `account` param (defaults to `"default"`)
 
-## Integrations (17)
+## Integrations (18)
 
 ### Google OAuth-based (9)
 | Integration | Scope | Key Operations |
@@ -27,7 +27,7 @@ Integration server that exposes external platforms via REST API + MCP tools for 
 | YouTube | youtube.readonly | search, video/channel details, playlists |
 | Calendar | calendar | list/create/update/delete events, quick add |
 
-### API-key / feed based (5)
+### API-key / feed based (6)
 | Integration | Env Var | Key Operations |
 |---|---|---|
 | Maps/Weather/Timezone | `GOOGLE_MAPS_API_KEY` | geocode, directions, places, weather, forecast, timezone |
@@ -35,6 +35,7 @@ Integration server that exposes external platforms via REST API + MCP tools for 
 | GitHub | `GITHUB_TOKEN` | repos, issues, PRs, notifications, search |
 | Wolfram Alpha | `WOLFRAM_APP_ID` | structured queries, short answers (math, science, facts) |
 | Canvas LMS | `CANVAS_BASE_URL` + session | courses, assignments, grades, announcements, todo, profile (+ iCal fallback via `CANVAS_FEED_URL`) |
+| Gemini | `GEMINI_API_KEY` | analyze images/videos from any platform URL via `google-genai` SDK |
 
 ### Session-cookie based (3)
 | Integration | Auth | Key Operations |
@@ -66,6 +67,7 @@ uvicorn brokenclaw.main:app --host 127.0.0.1 --port 9000
 - `brokenclaw/services/instagram_client.py` — Instagram private web API client with session cookies, CSRF token, cursor pagination
 - `brokenclaw/services/slack_auth.py` — Playwright-based Slack login, xoxc token extraction from localStorage, cookie capture
 - `brokenclaw/services/slack_client.py` — Slack web API client with xoxc token + d cookie, POST-based methods, cursor pagination
+- `brokenclaw/services/gemini.py` — Gemini media analysis: downloads media from any platform, sends to Gemini for image/video analysis
 - `brokenclaw/models/*.py` — Pydantic models per integration
 - `brokenclaw/routers/*.py` — REST endpoints per integration
 
@@ -87,6 +89,7 @@ uvicorn brokenclaw.main:app --host 127.0.0.1 --port 9000
    SLACK_WORKSPACE_URL=https://cwru-sdle.slack.com
    SLACK_EMAIL=...
    SLACK_PASSWORD=...
+   GEMINI_API_KEY=...
    ```
 3. Install Playwright: `pip install -e . && playwright install chromium`
 4. Authenticate Google integrations: `http://localhost:9000/auth/{integration}/setup`
@@ -160,3 +163,7 @@ For Claude Code, add to MCP settings:
 - Slack `conversations.history` is rate-limited (~1 req/min with max 15 results) — keep defaults conservative
 - Slack message `ts` field (e.g. `"1234567890.123456"`) serves as both timestamp and unique message ID
 - Slack uses `curl_cffi` with Chrome TLS impersonation (same pattern as LinkedIn/Instagram)
+- Gemini uses `google-genai` SDK (not the older `google-generativeai`) with API key auth via `GEMINI_API_KEY`
+- Gemini images are sent inline via `types.Part.from_bytes()`; videos must be uploaded via File API, polled for ACTIVE state, then referenced in `generate_content()`, then deleted
+- Gemini `gemini_analyze_slack_file` is a separate MCP tool because Slack downloads use `file_id`, not URL
+- Gemini service dispatches media downloads to existing platform download functions (Instagram, LinkedIn, Slack) for auth, or plain HTTP via `curl_cffi` for public URLs

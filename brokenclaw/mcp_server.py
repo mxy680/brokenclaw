@@ -21,6 +21,7 @@ from brokenclaw.services import canvas as canvas_service
 from brokenclaw.services import linkedin as linkedin_service
 from brokenclaw.services import instagram as instagram_service
 from brokenclaw.services import slack as slack_service
+from brokenclaw.services import gemini as gemini_service
 
 mcp = FastMCP("Brokenclaw")
 
@@ -1372,6 +1373,38 @@ def slack_download_file(file_id: str, account: str = "default") -> dict:
         return _handle_mcp_error(e)
 
 
+# --- Gemini tools ---
+
+@mcp.tool
+def gemini_analyze_media(url: str, prompt: str = "Describe this media in detail.", platform: str | None = None, account: str = "default") -> dict:
+    """Analyze an image or video using Google Gemini AI.
+
+    Provide a media URL from any platform:
+    - Instagram: reels, posts, stories, profile pics (platform="instagram")
+    - LinkedIn: profile pics, post images (platform="linkedin")
+    - Public URLs: news article images, YouTube thumbnails (platform=None)
+
+    For Slack files, use gemini_analyze_slack_file instead.
+    """
+    try:
+        return gemini_service.analyze_url(url, prompt, platform, account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def gemini_analyze_slack_file(file_id: str, prompt: str = "Describe this media in detail.", account: str = "default") -> dict:
+    """Analyze a Slack file attachment using Google Gemini AI.
+
+    Provide the file_id from a Slack message's file attachments (from slack_messages).
+    Supports images and videos shared in Slack.
+    """
+    try:
+        return gemini_service.analyze_slack_file(file_id, prompt, account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
 # --- Status tool ---
 
 @mcp.tool
@@ -1451,5 +1484,11 @@ def brokenclaw_status() -> dict:
     integrations["slack"] = {
         "authenticated_accounts": ["session"] if slack_session else [],
         "message": "Session active" if slack_session else "Not authenticated — visit /auth/slack/setup",
+    }
+    # Gemini: show API key status
+    gemini_key = get_settings().gemini_api_key
+    integrations["gemini"] = {
+        "authenticated_accounts": ["api_key"] if gemini_key else [],
+        "message": "API key configured" if gemini_key else "No API key — get one at https://aistudio.google.com/apikey and set GEMINI_API_KEY in .env",
     }
     return {"integrations": integrations}

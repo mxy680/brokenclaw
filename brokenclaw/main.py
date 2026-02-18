@@ -27,6 +27,7 @@ from brokenclaw.routers.canvas import router as canvas_router
 from brokenclaw.routers.linkedin import router as linkedin_router
 from brokenclaw.routers.instagram import router as instagram_router
 from brokenclaw.routers.slack import router as slack_router
+from brokenclaw.routers.gemini import router as gemini_router
 
 
 # --- Localhost-only middleware ---
@@ -63,6 +64,7 @@ api.include_router(canvas_router)
 api.include_router(linkedin_router)
 api.include_router(instagram_router)
 api.include_router(slack_router)
+api.include_router(gemini_router)
 
 
 @api.get("/api/status")
@@ -106,6 +108,12 @@ def api_status() -> dict:
     statuses["slack"] = {
         "session_active": slack_session,
         "ready": slack_session,
+    }
+    # Gemini API key status
+    gemini_key = bool(get_settings().gemini_api_key)
+    statuses["gemini"] = {
+        "api_key_configured": gemini_key,
+        "ready": gemini_key,
     }
     return {"integrations": statuses}
 

@@ -16,6 +16,7 @@ dependencies = [
     "icalendar",
     "playwright",
     "curl_cffi",
+    "google-genai",
 ]
 
 [project.optional-dependencies]
