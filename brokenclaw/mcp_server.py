@@ -12,8 +12,6 @@ from brokenclaw.services import forms as forms_service
 from brokenclaw.services import maps as maps_service
 from brokenclaw.services import youtube as youtube_service
 from brokenclaw.services import calendar as calendar_service
-from brokenclaw.services import contacts as contacts_service
-from brokenclaw.services import slack as slack_service
 from brokenclaw.services import news as news_service
 
 mcp = FastMCP("Brokenclaw")
@@ -700,91 +698,6 @@ def calendar_quick_add(text: str, calendar_id: str = "primary", account: str = "
         return _handle_mcp_error(e)
 
 
-# --- Contacts tools ---
-
-@mcp.tool
-def contacts_list(max_results: int = 50, account: str = "default") -> dict:
-    """List the user's Google Contacts, ordered by last modified.
-    Returns names, emails, phone numbers, and organization info."""
-    try:
-        contacts = contacts_service.list_contacts(max_results, account=account)
-        return {"contacts": [c.model_dump() for c in contacts], "count": len(contacts)}
-    except (AuthenticationError, IntegrationError, RateLimitError) as e:
-        return _handle_mcp_error(e)
-
-
-@mcp.tool
-def contacts_search(query: str, max_results: int = 10, account: str = "default") -> dict:
-    """Search Google Contacts by name, email, phone number, or organization.
-    Example: 'Bob Smith' or 'acme corp'. Returns matching contacts."""
-    try:
-        contacts = contacts_service.search_contacts(query, max_results, account=account)
-        return {"contacts": [c.model_dump() for c in contacts], "count": len(contacts)}
-    except (AuthenticationError, IntegrationError, RateLimitError) as e:
-        return _handle_mcp_error(e)
-
-
-@mcp.tool
-def contacts_get(resource_name: str, account: str = "default") -> dict:
-    """Get a specific contact by resource name (e.g. 'people/c12345').
-    Use contacts_list or contacts_search to find resource names."""
-    try:
-        return contacts_service.get_contact(resource_name, account=account).model_dump()
-    except (AuthenticationError, IntegrationError, RateLimitError) as e:
-        return _handle_mcp_error(e)
-
-
-@mcp.tool
-def contacts_create(
-    given_name: str,
-    family_name: str | None = None,
-    email: str | None = None,
-    phone: str | None = None,
-    organization: str | None = None,
-    title: str | None = None,
-    account: str = "default",
-) -> dict:
-    """Create a new Google Contact. At minimum provide a given (first) name.
-    Optionally add family name, email, phone, organization, and job title."""
-    try:
-        return contacts_service.create_contact(
-            given_name, family_name, email, phone, organization, title, account=account,
-        ).model_dump()
-    except (AuthenticationError, IntegrationError, RateLimitError) as e:
-        return _handle_mcp_error(e)
-
-
-@mcp.tool
-def contacts_update(
-    resource_name: str,
-    given_name: str | None = None,
-    family_name: str | None = None,
-    email: str | None = None,
-    phone: str | None = None,
-    organization: str | None = None,
-    title: str | None = None,
-    account: str = "default",
-) -> dict:
-    """Update an existing contact. Only provided fields are changed.
-    Use contacts_list or contacts_search to find the resource_name."""
-    try:
-        return contacts_service.update_contact(
-            resource_name, given_name, family_name, email, phone, organization, title, account=account,
-        ).model_dump()
-    except (AuthenticationError, IntegrationError, RateLimitError) as e:
-        return _handle_mcp_error(e)
-
-
-@mcp.tool
-def contacts_delete(resource_name: str, account: str = "default") -> dict:
-    """Delete a contact by resource name."""
-    try:
-        contacts_service.delete_contact(resource_name, account=account)
-        return {"status": "deleted", "resource_name": resource_name}
-    except (AuthenticationError, IntegrationError, RateLimitError) as e:
-        return _handle_mcp_error(e)
-
-
 # --- News tools ---
 
 @mcp.tool
@@ -821,83 +734,6 @@ def news_search(
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 
-
-# --- Slack tools ---
-
-@mcp.tool
-def slack_list_channels(exclude_archived: bool = True, max_results: int = 100) -> dict:
-    """List Slack channels the user is a member of. Returns channel names, IDs, topics, and member counts.
-    Use the channel ID from results to read messages or send to that channel."""
-    try:
-        channels = slack_service.list_channels(exclude_archived, max_results)
-        return {"channels": [c.model_dump() for c in channels], "count": len(channels)}
-    except (AuthenticationError, IntegrationError, RateLimitError) as e:
-        return _handle_mcp_error(e)
-
-
-@mcp.tool
-def slack_channel_history(channel_id: str, max_results: int = 20) -> dict:
-    """Read recent messages from a Slack channel. Returns messages with text, author, timestamp, and reactions.
-    Use slack_list_channels to find the channel ID first."""
-    try:
-        messages = slack_service.get_channel_history(channel_id, max_results)
-        return {"messages": [m.model_dump() for m in messages], "count": len(messages)}
-    except (AuthenticationError, IntegrationError, RateLimitError) as e:
-        return _handle_mcp_error(e)
-
-
-@mcp.tool
-def slack_thread_replies(channel_id: str, thread_ts: str, max_results: int = 50) -> dict:
-    """Read replies in a Slack thread. Provide the channel ID and the thread's parent timestamp (thread_ts).
-    The thread_ts comes from the 'ts' field of the parent message."""
-    try:
-        messages = slack_service.get_thread_replies(channel_id, thread_ts, max_results)
-        return {"messages": [m.model_dump() for m in messages], "count": len(messages)}
-    except (AuthenticationError, IntegrationError, RateLimitError) as e:
-        return _handle_mcp_error(e)
-
-
-@mcp.tool
-def slack_send_message(channel_id: str, text: str, thread_ts: str | None = None) -> dict:
-    """Send a message to a Slack channel. Optionally provide thread_ts to reply in a thread.
-    Use slack_list_channels to find the channel ID."""
-    try:
-        return slack_service.send_message(channel_id, text, thread_ts).model_dump()
-    except (AuthenticationError, IntegrationError, RateLimitError) as e:
-        return _handle_mcp_error(e)
-
-
-@mcp.tool
-def slack_search(query: str, max_results: int = 20) -> dict:
-    """Search Slack messages across all channels. Returns matching messages with text, author, channel, and permalink.
-    Supports Slack search modifiers like 'from:@user', 'in:#channel', 'before:2025-01-01'."""
-    try:
-        result = slack_service.search_messages(query, max_results)
-        return result.model_dump()
-    except (AuthenticationError, IntegrationError, RateLimitError) as e:
-        return _handle_mcp_error(e)
-
-
-@mcp.tool
-def slack_list_users(max_results: int = 100) -> dict:
-    """List users in the Slack workspace. Returns names, display names, emails, and timezone info."""
-    try:
-        users = slack_service.list_users(max_results)
-        return {"users": [u.model_dump() for u in users], "count": len(users)}
-    except (AuthenticationError, IntegrationError, RateLimitError) as e:
-        return _handle_mcp_error(e)
-
-
-@mcp.tool
-def slack_add_reaction(channel_id: str, timestamp: str, emoji: str) -> dict:
-    """Add a reaction emoji to a Slack message. Provide the channel ID, message timestamp,
-    and emoji name (without colons, e.g. 'thumbsup' not ':thumbsup:')."""
-    try:
-        return slack_service.add_reaction(channel_id, timestamp, emoji)
-    except (AuthenticationError, IntegrationError, RateLimitError) as e:
-        return _handle_mcp_error(e)
-
-
 # --- Status tool ---
 
 @mcp.tool
@@ -926,10 +762,5 @@ def brokenclaw_status() -> dict:
     integrations["news"] = {
         "authenticated_accounts": ["api_key"] if news_key else [],
         "message": "API key configured" if news_key else "No API key — get one at newsapi.org and set NEWS_API_KEY in .env",
-    }
-    from brokenclaw.slack_auth import has_slack_token
-    integrations["slack"] = {
-        "authenticated_accounts": ["user"] if has_slack_token() else [],
-        "message": "Authenticated" if has_slack_token() else "Not authenticated — visit /auth/slack/setup",
     }
     return {"integrations": integrations}

@@ -45,9 +45,6 @@ INTEGRATION_SCOPES = {
     "calendar": [
         "https://www.googleapis.com/auth/calendar",
     ],
-    "contacts": [
-        "https://www.googleapis.com/auth/contacts",
-    ],
 }
 
 SUPPORTED_INTEGRATIONS = set(INTEGRATION_SCOPES.keys())
@@ -173,10 +170,6 @@ def get_youtube_credentials(account: str = "default") -> Credentials:
 
 def get_calendar_credentials(account: str = "default") -> Credentials:
     return _get_credentials("calendar", account)
-
-
-def get_contacts_credentials(account: str = "default") -> Credentials:
-    return _get_credentials("contacts", account)
 
 
 # --- Auth router ---

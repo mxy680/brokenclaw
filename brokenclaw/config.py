@@ -11,8 +11,6 @@ class Settings(BaseSettings):
     client_secret_file: Path = Path("client_secret.json")
     log_level: str = "INFO"
     google_maps_api_key: str = ""
-    slack_client_id: str = ""
-    slack_client_secret: str = ""
     news_api_key: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
