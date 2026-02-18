@@ -54,6 +54,49 @@ def download_attachment(url: str, account: str = "default") -> tuple[bytes, str,
     return content, filename, mime_type
 
 
+def _best_image_url(vector_image: dict | None) -> str | None:
+    """Extract the best (largest) image URL from a Voyager vectorImage dict.
+
+    Handles both raw {rootUrl, artifacts} and the
+    {"com.linkedin.common.VectorImage": {rootUrl, artifacts}} wrapper.
+    """
+    if not vector_image or not isinstance(vector_image, dict):
+        return None
+
+    # Unwrap type wrapper if present
+    if "com.linkedin.common.VectorImage" in vector_image:
+        vector_image = vector_image["com.linkedin.common.VectorImage"]
+    if not isinstance(vector_image, dict):
+        return None
+
+    root_url = vector_image.get("rootUrl") or ""
+    artifacts = vector_image.get("artifacts") or []
+    if not artifacts:
+        return None
+
+    # Pick largest artifact by width * height
+    best = max(
+        artifacts,
+        key=lambda a: (a.get("width", 0) or 0) * (a.get("height", 0) or 0),
+        default=None,
+    )
+    if not best:
+        return None
+
+    segment = best.get("fileIdentifyingUrlPathSegment", "")
+    if not segment:
+        return None
+
+    # Some endpoints return the full URL in the segment with an empty rootUrl
+    if not root_url and segment.startswith("http"):
+        return segment
+
+    if not root_url:
+        return None
+
+    return root_url + segment
+
+
 def _format_date(date_dict: dict | None) -> str | None:
     """Format a Voyager date object {month, year} to 'YYYY-MM' string."""
     if not date_dict:
@@ -91,6 +134,7 @@ def get_my_profile(account: str = "default") -> LinkedInProfile:
         summary=mini.get("summary"),
         location=mini.get("locationName"),
         profile_url=_get_profile_url(public_id),
+        profile_pic_url=_best_image_url(mini.get("picture")),
     )
 
 
@@ -149,6 +193,13 @@ def get_full_profile(
                 endorsement_count=item.get("endorsementCount"),
             ))
 
+    # GraphQL profile nests the picture under displayImageReferenceResolutionResult.vectorImage
+    pp = profile_data.get("profilePicture") or {}
+    pic = _best_image_url(
+        (pp.get("displayImageReferenceResolutionResult") or {}).get("vectorImage")
+    ) if isinstance(pp, dict) else None
+    if not pic:
+        pic = _best_image_url(profile_data.get("picture"))
     profile = LinkedInProfile(
         entity_urn=profile_data.get("entityUrn") or profile_data.get("dashEntityUrn"),
         first_name=profile_data.get("firstName"),
@@ -157,6 +208,7 @@ def get_full_profile(
         summary=profile_data.get("summary"),
         location=profile_data.get("locationName") or profile_data.get("geoLocationName"),
         profile_url=_get_profile_url(public_id),
+        profile_pic_url=pic,
     )
 
     return LinkedInFullProfile(
@@ -165,6 +217,51 @@ def get_full_profile(
         education=education,
         skills=skills,
     )
+
+
+def _extract_image_from_attributes(image_obj: dict | None) -> str | None:
+    """Extract vectorImage URL from an image object with attributes[].detailData."""
+    if not image_obj or not isinstance(image_obj, dict):
+        return None
+    attrs = image_obj.get("attributes") or []
+    if not attrs or not isinstance(attrs, list):
+        return None
+    detail = (attrs[0] or {}).get("detailData") or {}
+    if not isinstance(detail, dict):
+        return None
+    # vectorImage can be at top level or nested under a key
+    vi = detail.get("vectorImage")
+    if vi:
+        return _best_image_url(vi)
+    # Check known wrapper keys
+    for key in ("nonEntityProfilePicture", "nonEntityCompanyLogo", "profilePicture"):
+        wrapper = detail.get(key)
+        if isinstance(wrapper, dict):
+            url = _best_image_url(wrapper.get("vectorImage"))
+            if url:
+                return url
+    return None
+
+
+def _extract_feed_image(content: dict) -> str | None:
+    """Extract the first image URL from a feed Update's inline content dict."""
+    # imageComponent — single or multi-image posts
+    ic = content.get("imageComponent")
+    if isinstance(ic, dict):
+        images = ic.get("images") or []
+        if images and isinstance(images, list):
+            url = _extract_image_from_attributes(images[0])
+            if url:
+                return url
+
+    # articleComponent — shared articles with a large preview image
+    ac = content.get("articleComponent")
+    if isinstance(ac, dict):
+        url = _extract_image_from_attributes(ac.get("largeImage"))
+        if url:
+            return url
+
+    return None
 
 
 # --- Feed ---
@@ -233,6 +330,12 @@ def get_feed(count: int = 20, account: str = "default") -> list[LinkedInPost]:
         else:
             counts = {}
 
+        # Extract image URL from inline content component
+        image_url = None
+        content = item.get("content") or {}
+        if isinstance(content, dict):
+            image_url = _extract_feed_image(content)
+
         urn = item.get("entityUrn") or ""
         url = f"https://www.linkedin.com/feed/update/{urn}" if urn else None
 
@@ -243,6 +346,7 @@ def get_feed(count: int = 20, account: str = "default") -> list[LinkedInPost]:
             num_likes=counts.get("numLikes") if isinstance(counts, dict) else None,
             num_comments=counts.get("numComments") if isinstance(counts, dict) else None,
             url=url,
+            image_url=image_url,
         ))
 
     return posts
@@ -272,6 +376,7 @@ def list_connections(
             last_name=p.get("lastName"),
             headline=p.get("occupation") or p.get("headline"),
             profile_url=_get_profile_url(public_id),
+            profile_pic_url=_best_image_url(p.get("picture")),
             connected_at=p.get("connectedAt"),
         ))
 
@@ -533,6 +638,8 @@ def _search(
             summary = item.get("summary") or {}
             summary_text = summary.get("text") if isinstance(summary, dict) else str(summary) if summary else None
 
+            search_image_url = _extract_image_from_attributes(item.get("image"))
+
             results.append(LinkedInSearchResult(
                 name=title_text,
                 headline=subtitle_text,
@@ -540,6 +647,7 @@ def _search(
                 location=location_text,
                 result_type=type_filter or "UNKNOWN",
                 url=item.get("navigationUrl"),
+                image_url=search_image_url,
             ))
 
     return results

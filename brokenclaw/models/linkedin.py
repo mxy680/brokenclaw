@@ -9,6 +9,7 @@ class LinkedInProfile(BaseModel):
     summary: str | None = None
     location: str | None = None
     profile_url: str | None = None
+    profile_pic_url: str | None = None
     connections_count: int | None = None
 
 
@@ -48,6 +49,7 @@ class LinkedInPost(BaseModel):
     num_likes: int | None = None
     num_comments: int | None = None
     url: str | None = None
+    image_url: str | None = None
 
 
 class LinkedInConnection(BaseModel):
@@ -55,6 +57,7 @@ class LinkedInConnection(BaseModel):
     last_name: str | None = None
     headline: str | None = None
     profile_url: str | None = None
+    profile_pic_url: str | None = None
     connected_at: int | None = None
 
 
@@ -93,3 +96,4 @@ class LinkedInSearchResult(BaseModel):
     location: str | None = None
     result_type: str | None = None
     url: str | None = None
+    image_url: str | None = None
