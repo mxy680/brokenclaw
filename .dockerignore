@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+tests/
+.env
+tokens.json
+client_secret.json
+.git/
+.gitignore
+CLAUDE.md

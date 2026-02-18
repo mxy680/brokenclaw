@@ -1,0 +1,11 @@
+services:
+  brokenclaw:
+    build: .
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./tokens.json:/app/tokens.json
+      - ./client_secret.json:/app/client_secret.json
+    env_file:
+      - .env
+    restart: unless-stopped
