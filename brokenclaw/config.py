@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     google_maps_api_key: str = ""
     slack_client_id: str = ""
     slack_client_secret: str = ""
+    news_api_key: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

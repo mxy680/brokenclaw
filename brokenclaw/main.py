@@ -21,6 +21,7 @@ from brokenclaw.routers.maps import router as maps_router
 from brokenclaw.routers.youtube import router as youtube_router
 from brokenclaw.routers.calendar import router as calendar_router
 from brokenclaw.routers.contacts import router as contacts_router
+from brokenclaw.routers.news import router as news_router
 from brokenclaw.routers.slack import router as slack_router
 from brokenclaw.slack_auth import router as slack_auth_router
 
@@ -53,6 +54,7 @@ api.include_router(maps_router)
 api.include_router(youtube_router)
 api.include_router(calendar_router)
 api.include_router(contacts_router)
+api.include_router(news_router)
 api.include_router(slack_router)
 api.include_router(slack_auth_router)
 

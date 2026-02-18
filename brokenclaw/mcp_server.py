@@ -14,6 +14,7 @@ from brokenclaw.services import youtube as youtube_service
 from brokenclaw.services import calendar as calendar_service
 from brokenclaw.services import contacts as contacts_service
 from brokenclaw.services import slack as slack_service
+from brokenclaw.services import news as news_service
 
 mcp = FastMCP("Brokenclaw")
 
@@ -784,6 +785,43 @@ def contacts_delete(resource_name: str, account: str = "default") -> dict:
         return _handle_mcp_error(e)
 
 
+# --- News tools ---
+
+@mcp.tool
+def news_top_headlines(
+    country: str | None = "us",
+    category: str | None = None,
+    query: str | None = None,
+    page_size: int = 20,
+) -> dict:
+    """Get top news headlines. Filter by country (2-letter code, e.g. 'us', 'gb') and/or category
+    (business, entertainment, general, health, science, sports, technology).
+    Optionally search within headlines with a query."""
+    try:
+        return news_service.top_headlines(country, category, query, page_size).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def news_search(
+    query: str,
+    language: str = "en",
+    sort_by: str = "publishedAt",
+    from_date: str | None = None,
+    to_date: str | None = None,
+    domains: str | None = None,
+    page_size: int = 20,
+) -> dict:
+    """Search all news articles from 150,000+ sources. Sort by 'relevancy', 'popularity', or 'publishedAt'.
+    Filter by date range (ISO format, e.g. '2025-03-01') and specific domains (e.g. 'bbc.co.uk,cnn.com').
+    Supports operators: AND, OR, NOT, quotes for exact match."""
+    try:
+        return news_service.search_news(query, language, sort_by, from_date, to_date, domains, page_size).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
 # --- Slack tools ---
 
 @mcp.tool
@@ -883,6 +921,11 @@ def brokenclaw_status() -> dict:
     integrations["maps"] = {
         "authenticated_accounts": ["api_key"] if maps_key else [],
         "message": "API key configured" if maps_key else "No API key — set GOOGLE_MAPS_API_KEY in .env",
+    }
+    news_key = get_settings().news_api_key
+    integrations["news"] = {
+        "authenticated_accounts": ["api_key"] if news_key else [],
+        "message": "API key configured" if news_key else "No API key — get one at newsapi.org and set NEWS_API_KEY in .env",
     }
     from brokenclaw.slack_auth import has_slack_token
     integrations["slack"] = {
