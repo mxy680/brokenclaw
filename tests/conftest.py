@@ -57,3 +57,14 @@ requires_contacts = pytest.mark.skipif(
     not _is_authenticated("contacts"),
     reason="Contacts not authenticated — run /auth/contacts/setup first",
 )
+
+
+def _has_slack_token() -> bool:
+    from brokenclaw.slack_auth import has_slack_token
+    return has_slack_token()
+
+
+requires_slack = pytest.mark.skipif(
+    not _has_slack_token(),
+    reason="Slack not authenticated — run /auth/slack/setup first",
+)

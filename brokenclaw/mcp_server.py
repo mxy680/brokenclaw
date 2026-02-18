@@ -13,6 +13,7 @@ from brokenclaw.services import maps as maps_service
 from brokenclaw.services import youtube as youtube_service
 from brokenclaw.services import calendar as calendar_service
 from brokenclaw.services import contacts as contacts_service
+from brokenclaw.services import slack as slack_service
 
 mcp = FastMCP("Brokenclaw")
 
@@ -783,6 +784,82 @@ def contacts_delete(resource_name: str, account: str = "default") -> dict:
         return _handle_mcp_error(e)
 
 
+# --- Slack tools ---
+
+@mcp.tool
+def slack_list_channels(exclude_archived: bool = True, max_results: int = 100) -> dict:
+    """List Slack channels the user is a member of. Returns channel names, IDs, topics, and member counts.
+    Use the channel ID from results to read messages or send to that channel."""
+    try:
+        channels = slack_service.list_channels(exclude_archived, max_results)
+        return {"channels": [c.model_dump() for c in channels], "count": len(channels)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slack_channel_history(channel_id: str, max_results: int = 20) -> dict:
+    """Read recent messages from a Slack channel. Returns messages with text, author, timestamp, and reactions.
+    Use slack_list_channels to find the channel ID first."""
+    try:
+        messages = slack_service.get_channel_history(channel_id, max_results)
+        return {"messages": [m.model_dump() for m in messages], "count": len(messages)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slack_thread_replies(channel_id: str, thread_ts: str, max_results: int = 50) -> dict:
+    """Read replies in a Slack thread. Provide the channel ID and the thread's parent timestamp (thread_ts).
+    The thread_ts comes from the 'ts' field of the parent message."""
+    try:
+        messages = slack_service.get_thread_replies(channel_id, thread_ts, max_results)
+        return {"messages": [m.model_dump() for m in messages], "count": len(messages)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slack_send_message(channel_id: str, text: str, thread_ts: str | None = None) -> dict:
+    """Send a message to a Slack channel. Optionally provide thread_ts to reply in a thread.
+    Use slack_list_channels to find the channel ID."""
+    try:
+        return slack_service.send_message(channel_id, text, thread_ts).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slack_search(query: str, max_results: int = 20) -> dict:
+    """Search Slack messages across all channels. Returns matching messages with text, author, channel, and permalink.
+    Supports Slack search modifiers like 'from:@user', 'in:#channel', 'before:2025-01-01'."""
+    try:
+        result = slack_service.search_messages(query, max_results)
+        return result.model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slack_list_users(max_results: int = 100) -> dict:
+    """List users in the Slack workspace. Returns names, display names, emails, and timezone info."""
+    try:
+        users = slack_service.list_users(max_results)
+        return {"users": [u.model_dump() for u in users], "count": len(users)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def slack_add_reaction(channel_id: str, timestamp: str, emoji: str) -> dict:
+    """Add a reaction emoji to a Slack message. Provide the channel ID, message timestamp,
+    and emoji name (without colons, e.g. 'thumbsup' not ':thumbsup:')."""
+    try:
+        return slack_service.add_reaction(channel_id, timestamp, emoji)
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
 # --- Status tool ---
 
 @mcp.tool
@@ -806,5 +883,10 @@ def brokenclaw_status() -> dict:
     integrations["maps"] = {
         "authenticated_accounts": ["api_key"] if maps_key else [],
         "message": "API key configured" if maps_key else "No API key — set GOOGLE_MAPS_API_KEY in .env",
+    }
+    from brokenclaw.slack_auth import has_slack_token
+    integrations["slack"] = {
+        "authenticated_accounts": ["user"] if has_slack_token() else [],
+        "message": "Authenticated" if has_slack_token() else "Not authenticated — visit /auth/slack/setup",
     }
     return {"integrations": integrations}
