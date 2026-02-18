@@ -62,7 +62,7 @@ def search_videos(query: str, max_results: int = 10, account: str = "default") -
             part="snippet",
             type="video",
             maxResults=min(max_results, 50),
-        ).execute()
+        ).execute(num_retries=3)
         videos = []
         for item in result.get("items", []):
             snippet = item.get("snippet", {})
@@ -88,7 +88,7 @@ def get_video(video_id: str, account: str = "default") -> VideoDetail:
         result = service.videos().list(
             id=video_id,
             part="snippet,contentDetails,statistics",
-        ).execute()
+        ).execute(num_retries=3)
         items = result.get("items", [])
         if not items:
             raise IntegrationError(f"Video not found: {video_id}")
@@ -122,7 +122,7 @@ def get_channel(channel_id: str, account: str = "default") -> ChannelInfo:
         result = service.channels().list(
             id=channel_id,
             part="snippet,statistics",
-        ).execute()
+        ).execute(num_retries=3)
         items = result.get("items", [])
         if not items:
             raise IntegrationError(f"Channel not found: {channel_id}")
@@ -155,7 +155,7 @@ def list_playlists(channel_id: str | None = None, max_results: int = 25, account
             params["channelId"] = channel_id
         else:
             params["mine"] = True
-        result = service.playlists().list(**params).execute()
+        result = service.playlists().list(**params).execute(num_retries=3)
         playlists = []
         for item in result.get("items", []):
             snippet = item.get("snippet", {})
@@ -181,7 +181,7 @@ def list_playlist_items(playlist_id: str, max_results: int = 50, account: str = 
             playlistId=playlist_id,
             part="snippet",
             maxResults=min(max_results, 50),
-        ).execute()
+        ).execute(num_retries=3)
         items = []
         for item in result.get("items", []):
             snippet = item.get("snippet", {})

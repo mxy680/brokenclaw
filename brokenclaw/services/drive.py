@@ -54,7 +54,7 @@ def list_files(max_results: int = 20, account: str = "default") -> list[DriveFil
             pageSize=max_results,
             fields=f"files({FIELDS})",
             orderBy="modifiedTime desc",
-        ).execute()
+        ).execute(num_retries=3)
         return [_parse_file(f) for f in results.get("files", [])]
     except HttpError as e:
         _handle_api_error(e)
@@ -69,7 +69,7 @@ def search_files(query: str, max_results: int = 20, account: str = "default") ->
             pageSize=max_results,
             fields=f"files({FIELDS})",
             orderBy="modifiedTime desc",
-        ).execute()
+        ).execute(num_retries=3)
         return [_parse_file(f) for f in results.get("files", [])]
     except HttpError as e:
         _handle_api_error(e)
@@ -79,7 +79,7 @@ def get_file(file_id: str, account: str = "default") -> DriveFile:
     """Get file metadata by ID."""
     service = _get_drive_service(account)
     try:
-        f = service.files().get(fileId=file_id, fields=FIELDS).execute()
+        f = service.files().get(fileId=file_id, fields=FIELDS).execute(num_retries=3)
         return _parse_file(f)
     except HttpError as e:
         _handle_api_error(e)
@@ -89,7 +89,7 @@ def get_file_content(file_id: str, account: str = "default") -> FileContentRespo
     """Download text content of a file. Works for Google Docs (exported as plain text) and plain text files."""
     service = _get_drive_service(account)
     try:
-        meta = service.files().get(fileId=file_id, fields="id, name, mimeType").execute()
+        meta = service.files().get(fileId=file_id, fields="id, name, mimeType").execute(num_retries=3)
         mime = meta.get("mimeType", "")
 
         # Google Docs/Sheets/Slides need to be exported
@@ -100,10 +100,10 @@ def get_file_content(file_id: str, account: str = "default") -> FileContentRespo
         }
 
         if mime in export_map:
-            content = service.files().export(fileId=file_id, mimeType=export_map[mime]).execute()
+            content = service.files().export(fileId=file_id, mimeType=export_map[mime]).execute(num_retries=3)
             text = content.decode("utf-8") if isinstance(content, bytes) else content
         else:
-            content = service.files().get_media(fileId=file_id).execute()
+            content = service.files().get_media(fileId=file_id).execute(num_retries=3)
             text = content.decode("utf-8") if isinstance(content, bytes) else str(content)
 
         return FileContentResponse(id=meta["id"], name=meta["name"], mime_type=mime, content=text)
@@ -120,7 +120,7 @@ def create_file(name: str, content: str, mime_type: str = "text/plain", parent_f
 
     media = MediaIoBaseUpload(io.BytesIO(content.encode("utf-8")), mimetype=mime_type)
     try:
-        f = service.files().create(body=metadata, media_body=media, fields=FIELDS).execute()
+        f = service.files().create(body=metadata, media_body=media, fields=FIELDS).execute(num_retries=3)
         return _parse_file(f)
     except HttpError as e:
         _handle_api_error(e)
@@ -133,7 +133,7 @@ def create_folder(name: str, parent_folder_id: str | None = None, account: str =
     if parent_folder_id:
         metadata["parents"] = [parent_folder_id]
     try:
-        f = service.files().create(body=metadata, fields=FIELDS).execute()
+        f = service.files().create(body=metadata, fields=FIELDS).execute(num_retries=3)
         return _parse_file(f)
     except HttpError as e:
         _handle_api_error(e)

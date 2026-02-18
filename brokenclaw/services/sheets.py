@@ -36,7 +36,7 @@ def get_spreadsheet(spreadsheet_id: str, account: str = "default") -> Spreadshee
     """Get spreadsheet metadata: title, sheet names, URL."""
     service = _get_sheets_service(account)
     try:
-        result = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        result = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute(num_retries=3)
         sheets = [s["properties"]["title"] for s in result.get("sheets", [])]
         return SpreadsheetInfo(
             id=result["spreadsheetId"],
@@ -54,7 +54,7 @@ def read_range(spreadsheet_id: str, range: str, account: str = "default") -> Rea
     try:
         result = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id, range=range
-        ).execute()
+        ).execute(num_retries=3)
         return ReadRangeResponse(
             spreadsheet_id=spreadsheet_id,
             range=result.get("range", range),
@@ -73,7 +73,7 @@ def write_range(spreadsheet_id: str, range: str, values: list[list[str]], accoun
             range=range,
             valueInputOption="USER_ENTERED",
             body={"values": values},
-        ).execute()
+        ).execute(num_retries=3)
         return WriteRangeResponse(
             spreadsheet_id=spreadsheet_id,
             updated_range=result.get("updatedRange", range),
@@ -95,7 +95,7 @@ def append_rows(spreadsheet_id: str, range: str, values: list[list[str]], accoun
             valueInputOption="USER_ENTERED",
             insertDataOption="INSERT_ROWS",
             body={"values": values},
-        ).execute()
+        ).execute(num_retries=3)
         updates = result.get("updates", {})
         return WriteRangeResponse(
             spreadsheet_id=spreadsheet_id,
@@ -115,7 +115,7 @@ def create_spreadsheet(title: str, sheet_names: list[str] | None = None, account
     if sheet_names:
         body["sheets"] = [{"properties": {"title": name}} for name in sheet_names]
     try:
-        result = service.spreadsheets().create(body=body).execute()
+        result = service.spreadsheets().create(body=body).execute(num_retries=3)
         sheets = [s["properties"]["title"] for s in result.get("sheets", [])]
         return SpreadsheetInfo(
             id=result["spreadsheetId"],

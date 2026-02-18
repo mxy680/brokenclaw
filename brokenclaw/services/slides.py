@@ -56,7 +56,7 @@ def get_presentation(presentation_id: str, account: str = "default") -> Presenta
     """Get presentation metadata: title, ID, slide count, URL."""
     service = _get_slides_service(account)
     try:
-        pres = service.presentations().get(presentationId=presentation_id).execute()
+        pres = service.presentations().get(presentationId=presentation_id).execute(num_retries=3)
         return PresentationInfo(
             id=pres["presentationId"],
             title=pres.get("title", ""),
@@ -71,7 +71,7 @@ def get_presentation_content(presentation_id: str, account: str = "default") -> 
     """Get presentation with full text extracted from each slide."""
     service = _get_slides_service(account)
     try:
-        pres = service.presentations().get(presentationId=presentation_id).execute()
+        pres = service.presentations().get(presentationId=presentation_id).execute(num_retries=3)
         slides = pres.get("slides", [])
         slides_text = _extract_slides_text(slides)
         return PresentationContent(
@@ -89,7 +89,7 @@ def create_presentation(title: str, account: str = "default") -> PresentationInf
     """Create a new empty presentation."""
     service = _get_slides_service(account)
     try:
-        pres = service.presentations().create(body={"title": title}).execute()
+        pres = service.presentations().create(body={"title": title}).execute(num_retries=3)
         return PresentationInfo(
             id=pres["presentationId"],
             title=pres.get("title", ""),
@@ -119,7 +119,7 @@ def add_slide(
                     }
                 ]
             },
-        ).execute()
+        ).execute(num_retries=3)
         return get_presentation(presentation_id, account)
     except HttpError as e:
         _handle_api_error(e)
@@ -150,7 +150,7 @@ def replace_text(
                     }
                 ]
             },
-        ).execute()
+        ).execute(num_retries=3)
         return get_presentation(presentation_id, account)
     except HttpError as e:
         _handle_api_error(e)

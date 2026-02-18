@@ -64,12 +64,12 @@ def get_inbox(max_results: int = 20, account: str = "default") -> list[GmailMess
     try:
         results = service.users().messages().list(
             userId="me", labelIds=["INBOX"], maxResults=max_results
-        ).execute()
+        ).execute(num_retries=3)
         messages = []
         for msg_ref in results.get("messages", []):
             msg = service.users().messages().get(
                 userId="me", id=msg_ref["id"], format="full"
-            ).execute()
+            ).execute(num_retries=3)
             messages.append(_parse_message(msg))
         return messages
     except HttpError as e:
@@ -82,12 +82,12 @@ def search_messages(query: str, max_results: int = 20, account: str = "default")
     try:
         results = service.users().messages().list(
             userId="me", q=query, maxResults=max_results
-        ).execute()
+        ).execute(num_retries=3)
         messages = []
         for msg_ref in results.get("messages", []):
             msg = service.users().messages().get(
                 userId="me", id=msg_ref["id"], format="full"
-            ).execute()
+            ).execute(num_retries=3)
             messages.append(_parse_message(msg))
         return messages
     except HttpError as e:
@@ -100,7 +100,7 @@ def get_message(message_id: str, account: str = "default") -> GmailMessage:
     try:
         msg = service.users().messages().get(
             userId="me", id=message_id, format="full"
-        ).execute()
+        ).execute(num_retries=3)
         return _parse_message(msg)
     except HttpError as e:
         _handle_api_error(e)
@@ -116,10 +116,10 @@ def send_message(to: str, subject: str, body: str, account: str = "default") -> 
     try:
         sent = service.users().messages().send(
             userId="me", body={"raw": raw}
-        ).execute()
+        ).execute(num_retries=3)
         msg = service.users().messages().get(
             userId="me", id=sent["id"], format="full"
-        ).execute()
+        ).execute(num_retries=3)
         return _parse_message(msg)
     except HttpError as e:
         _handle_api_error(e)
@@ -131,7 +131,7 @@ def reply_to_message(message_id: str, body: str, account: str = "default") -> Gm
     try:
         original = service.users().messages().get(
             userId="me", id=message_id, format="full"
-        ).execute()
+        ).execute(num_retries=3)
         headers = {h["name"].lower(): h["value"] for h in original["payload"].get("headers", [])}
 
         mime = MIMEText(body)
@@ -143,10 +143,10 @@ def reply_to_message(message_id: str, body: str, account: str = "default") -> Gm
 
         sent = service.users().messages().send(
             userId="me", body={"raw": raw, "threadId": original["threadId"]}
-        ).execute()
+        ).execute(num_retries=3)
         msg = service.users().messages().get(
             userId="me", id=sent["id"], format="full"
-        ).execute()
+        ).execute(num_retries=3)
         return _parse_message(msg)
     except HttpError as e:
         _handle_api_error(e)

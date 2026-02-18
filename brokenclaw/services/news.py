@@ -1,6 +1,7 @@
 import requests
 
 from brokenclaw.config import get_settings
+from brokenclaw.http_client import get_session
 from brokenclaw.exceptions import AuthenticationError, IntegrationError, RateLimitError
 from brokenclaw.models.news import Article, ArticleSource, NewsSearchResult
 
@@ -67,7 +68,7 @@ def top_headlines(
         params["category"] = category
     if query:
         params["q"] = query
-    resp = requests.get(f"{NEWS_API_BASE}/top-headlines", params=params)
+    resp = get_session().get(f"{NEWS_API_BASE}/top-headlines", params=params)
     return _parse_articles(_handle_response(resp))
 
 
@@ -94,5 +95,5 @@ def search_news(
         params["to"] = to_date
     if domains:
         params["domains"] = domains
-    resp = requests.get(f"{NEWS_API_BASE}/everything", params=params)
+    resp = get_session().get(f"{NEWS_API_BASE}/everything", params=params)
     return _parse_articles(_handle_response(resp))

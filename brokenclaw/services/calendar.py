@@ -66,7 +66,7 @@ def list_calendars(max_results: int = 50, account: str = "default") -> list[Cale
     try:
         result = service.calendarList().list(
             maxResults=min(max_results, 250),
-        ).execute()
+        ).execute(num_retries=3)
         calendars = []
         for item in result.get("items", []):
             calendars.append(CalendarInfo(
@@ -106,7 +106,7 @@ def list_events(
             params["timeMax"] = time_max
         if query:
             params["q"] = query
-        result = service.events().list(**params).execute()
+        result = service.events().list(**params).execute(num_retries=3)
         return [_parse_event(item) for item in result.get("items", [])]
     except HttpError as e:
         _handle_api_error(e)
@@ -116,7 +116,7 @@ def get_event(calendar_id: str, event_id: str, account: str = "default") -> Even
     """Get a specific event by ID."""
     service = _get_calendar_service(account)
     try:
-        item = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+        item = service.events().get(calendarId=calendar_id, eventId=event_id).execute(num_retries=3)
         return _parse_event(item)
     except HttpError as e:
         _handle_api_error(e)
@@ -150,7 +150,7 @@ def create_event(
             body["location"] = location
         if attendees:
             body["attendees"] = [{"email": e} for e in attendees]
-        item = service.events().insert(calendarId=calendar_id, body=body).execute()
+        item = service.events().insert(calendarId=calendar_id, body=body).execute(num_retries=3)
         return _parse_event(item)
     except HttpError as e:
         _handle_api_error(e)
@@ -170,7 +170,7 @@ def update_event(
     """Update an existing event. Only provided fields are changed."""
     service = _get_calendar_service(account)
     try:
-        existing = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+        existing = service.events().get(calendarId=calendar_id, eventId=event_id).execute(num_retries=3)
         if summary is not None:
             existing["summary"] = summary
         if description is not None:
@@ -187,7 +187,7 @@ def update_event(
                 existing["end"]["timeZone"] = time_zone
         item = service.events().update(
             calendarId=calendar_id, eventId=event_id, body=existing,
-        ).execute()
+        ).execute(num_retries=3)
         return _parse_event(item)
     except HttpError as e:
         _handle_api_error(e)
@@ -197,7 +197,7 @@ def delete_event(calendar_id: str, event_id: str, account: str = "default") -> N
     """Delete an event."""
     service = _get_calendar_service(account)
     try:
-        service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
+        service.events().delete(calendarId=calendar_id, eventId=event_id).execute(num_retries=3)
     except HttpError as e:
         _handle_api_error(e)
 
@@ -210,7 +210,7 @@ def quick_add_event(
     """Create an event from a natural language string (e.g. 'Meeting with Bob tomorrow at 3pm')."""
     service = _get_calendar_service(account)
     try:
-        item = service.events().quickAdd(calendarId=calendar_id, text=text).execute()
+        item = service.events().quickAdd(calendarId=calendar_id, text=text).execute(num_retries=3)
         return _parse_event(item)
     except HttpError as e:
         _handle_api_error(e)

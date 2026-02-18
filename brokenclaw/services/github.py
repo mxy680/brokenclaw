@@ -1,6 +1,7 @@
 import requests
 
 from brokenclaw.config import get_settings
+from brokenclaw.http_client import get_session
 from brokenclaw.exceptions import AuthenticationError, IntegrationError, RateLimitError
 from brokenclaw.models.github import (
     Issue,
@@ -132,7 +133,7 @@ def list_repos(
     per_page: int = 30,
 ) -> list[Repo]:
     """List the authenticated user's repositories."""
-    resp = requests.get(
+    resp = get_session().get(
         f"{GITHUB_API_BASE}/user/repos",
         headers=_headers(),
         params={"sort": sort, "per_page": min(per_page, 100), "type": "all"},
@@ -143,13 +144,13 @@ def list_repos(
 
 def get_repo(owner: str, repo: str) -> Repo:
     """Get a specific repository by owner/repo."""
-    resp = requests.get(f"{GITHUB_API_BASE}/repos/{owner}/{repo}", headers=_headers())
+    resp = get_session().get(f"{GITHUB_API_BASE}/repos/{owner}/{repo}", headers=_headers())
     return _parse_repo(_handle_response(resp))
 
 
 def search_repos(query: str, sort: str = "stars", per_page: int = 20) -> RepoSearchResult:
     """Search GitHub repositories."""
-    resp = requests.get(
+    resp = get_session().get(
         f"{GITHUB_API_BASE}/search/repositories",
         headers=_headers(),
         params={"q": query, "sort": sort, "per_page": min(per_page, 100)},
@@ -174,7 +175,7 @@ def list_issues(
     params: dict = {"state": state, "per_page": min(per_page, 100)}
     if labels:
         params["labels"] = labels
-    resp = requests.get(
+    resp = get_session().get(
         f"{GITHUB_API_BASE}/repos/{owner}/{repo}/issues",
         headers=_headers(),
         params=params,
@@ -185,7 +186,7 @@ def list_issues(
 
 def get_issue(owner: str, repo: str, issue_number: int) -> Issue:
     """Get a specific issue by number."""
-    resp = requests.get(
+    resp = get_session().get(
         f"{GITHUB_API_BASE}/repos/{owner}/{repo}/issues/{issue_number}",
         headers=_headers(),
     )
@@ -208,7 +209,7 @@ def create_issue(
         payload["labels"] = labels
     if assignees:
         payload["assignees"] = assignees
-    resp = requests.post(
+    resp = get_session().post(
         f"{GITHUB_API_BASE}/repos/{owner}/{repo}/issues",
         headers=_headers(),
         json=payload,
@@ -225,7 +226,7 @@ def list_pull_requests(
     per_page: int = 30,
 ) -> list[PullRequest]:
     """List pull requests for a repository."""
-    resp = requests.get(
+    resp = get_session().get(
         f"{GITHUB_API_BASE}/repos/{owner}/{repo}/pulls",
         headers=_headers(),
         params={"state": state, "per_page": min(per_page, 100)},
@@ -236,7 +237,7 @@ def list_pull_requests(
 
 def get_pull_request(owner: str, repo: str, pr_number: int) -> PullRequest:
     """Get a specific pull request by number."""
-    resp = requests.get(
+    resp = get_session().get(
         f"{GITHUB_API_BASE}/repos/{owner}/{repo}/pulls/{pr_number}",
         headers=_headers(),
     )
@@ -251,7 +252,7 @@ def list_notifications(
     per_page: int = 30,
 ) -> list[Notification]:
     """List notifications for the authenticated user."""
-    resp = requests.get(
+    resp = get_session().get(
         f"{GITHUB_API_BASE}/notifications",
         headers=_headers(),
         params={

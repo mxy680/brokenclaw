@@ -50,7 +50,7 @@ def get_document(document_id: str, account: str = "default") -> DocInfo:
     """Get document metadata: title, ID, URL."""
     service = _get_docs_service(account)
     try:
-        doc = service.documents().get(documentId=document_id).execute()
+        doc = service.documents().get(documentId=document_id).execute(num_retries=3)
         return DocInfo(
             id=doc["documentId"],
             title=doc["title"],
@@ -64,7 +64,7 @@ def get_document_content(document_id: str, account: str = "default") -> DocConte
     """Get document with full text content."""
     service = _get_docs_service(account)
     try:
-        doc = service.documents().get(documentId=document_id).execute()
+        doc = service.documents().get(documentId=document_id).execute(num_retries=3)
         body_text = _extract_body_text(doc.get("body", {}))
         return DocContent(
             id=doc["documentId"],
@@ -80,7 +80,7 @@ def create_document(title: str, account: str = "default") -> DocInfo:
     """Create a new empty document."""
     service = _get_docs_service(account)
     try:
-        doc = service.documents().create(body={"title": title}).execute()
+        doc = service.documents().create(body={"title": title}).execute(num_retries=3)
         return DocInfo(
             id=doc["documentId"],
             title=doc["title"],
@@ -106,7 +106,7 @@ def insert_text(document_id: str, text: str, index: int = 1, account: str = "def
                     }
                 ]
             },
-        ).execute()
+        ).execute(num_retries=3)
         return get_document(document_id, account)
     except HttpError as e:
         _handle_api_error(e)
@@ -137,7 +137,7 @@ def replace_text(
                     }
                 ]
             },
-        ).execute()
+        ).execute(num_retries=3)
         return get_document(document_id, account)
     except HttpError as e:
         _handle_api_error(e)

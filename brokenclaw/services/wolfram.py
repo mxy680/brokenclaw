@@ -1,6 +1,7 @@
 import requests
 
 from brokenclaw.config import get_settings
+from brokenclaw.http_client import get_session
 from brokenclaw.exceptions import AuthenticationError, IntegrationError, RateLimitError
 from brokenclaw.models.wolfram import WolframPod, WolframResult, WolframShortAnswer
 
@@ -19,7 +20,7 @@ def _get_app_id() -> str:
 
 def query(input_text: str, units: str = "nonmetric") -> WolframResult:
     """Full structured query — returns all result pods with plaintext."""
-    resp = requests.get(
+    resp = get_session().get(
         f"{WOLFRAM_API_BASE}/v2/query",
         params={
             "appid": _get_app_id(),
@@ -63,7 +64,7 @@ def query(input_text: str, units: str = "nonmetric") -> WolframResult:
 
 def short_answer(input_text: str, units: str = "imperial") -> WolframShortAnswer:
     """Quick one-line answer."""
-    resp = requests.get(
+    resp = get_session().get(
         f"{WOLFRAM_API_BASE}/v1/result",
         params={
             "appid": _get_app_id(),

@@ -94,7 +94,7 @@ def get_form(form_id: str, account: str = "default") -> FormInfo:
     """Get form metadata: title, description, responder URI."""
     service = _get_forms_service(account)
     try:
-        form = service.forms().get(formId=form_id).execute()
+        form = service.forms().get(formId=form_id).execute(num_retries=3)
         info = form.get("info", {})
         return FormInfo(
             id=form["formId"],
@@ -111,7 +111,7 @@ def get_form_detail(form_id: str, account: str = "default") -> FormDetail:
     """Get form with all questions."""
     service = _get_forms_service(account)
     try:
-        form = service.forms().get(formId=form_id).execute()
+        form = service.forms().get(formId=form_id).execute(num_retries=3)
         info = form.get("info", {})
         questions = _extract_questions(form.get("items", []))
         return FormDetail(
@@ -130,7 +130,7 @@ def create_form(title: str, account: str = "default") -> FormInfo:
     """Create a new empty form."""
     service = _get_forms_service(account)
     try:
-        form = service.forms().create(body={"info": {"title": title}}).execute()
+        form = service.forms().create(body={"info": {"title": title}}).execute(num_retries=3)
         info = form.get("info", {})
         return FormInfo(
             id=form["formId"],
@@ -182,7 +182,7 @@ def add_question(
                     }
                 ]
             },
-        ).execute()
+        ).execute(num_retries=3)
         return get_form_detail(form_id, account)
     except HttpError as e:
         _handle_api_error(e)
@@ -196,7 +196,7 @@ def list_responses(
     """List all responses for a form."""
     service = _get_forms_service(account)
     try:
-        result = service.forms().responses().list(formId=form_id).execute()
+        result = service.forms().responses().list(formId=form_id).execute(num_retries=3)
         responses = []
         for resp in result.get("responses", []):
             answers = []
@@ -230,7 +230,7 @@ def get_response(
     try:
         resp = service.forms().responses().get(
             formId=form_id, responseId=response_id,
-        ).execute()
+        ).execute(num_retries=3)
         answers = []
         for qid, answer_data in resp.get("answers", {}).items():
             text_answers = None

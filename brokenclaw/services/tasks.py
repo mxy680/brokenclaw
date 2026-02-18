@@ -48,7 +48,7 @@ def list_task_lists(max_results: int = 20, account: str = "default") -> list[Tas
     """List all task lists for the authenticated user."""
     service = _get_tasks_service(account)
     try:
-        result = service.tasklists().list(maxResults=max_results).execute()
+        result = service.tasklists().list(maxResults=max_results).execute(num_retries=3)
         return [
             TaskListInfo(id=tl["id"], title=tl.get("title", ""))
             for tl in result.get("items", [])
@@ -61,7 +61,7 @@ def create_task_list(title: str, account: str = "default") -> TaskListInfo:
     """Create a new task list."""
     service = _get_tasks_service(account)
     try:
-        tl = service.tasklists().insert(body={"title": title}).execute()
+        tl = service.tasklists().insert(body={"title": title}).execute(num_retries=3)
         return TaskListInfo(id=tl["id"], title=tl.get("title", ""))
     except HttpError as e:
         _handle_api_error(e)
@@ -71,7 +71,7 @@ def delete_task_list(tasklist_id: str, account: str = "default") -> None:
     """Delete a task list."""
     service = _get_tasks_service(account)
     try:
-        service.tasklists().delete(tasklist=tasklist_id).execute()
+        service.tasklists().delete(tasklist=tasklist_id).execute(num_retries=3)
     except HttpError as e:
         _handle_api_error(e)
 
@@ -95,7 +95,7 @@ def list_tasks(
                 maxResults=max_results,
                 showCompleted=show_completed,
             )
-            .execute()
+            .execute(num_retries=3)
         )
         return [_parse_task(t) for t in result.get("items", [])]
     except HttpError as e:
@@ -106,7 +106,7 @@ def get_task(tasklist_id: str, task_id: str, account: str = "default") -> TaskIt
     """Get a single task by ID."""
     service = _get_tasks_service(account)
     try:
-        task = service.tasks().get(tasklist=tasklist_id, task=task_id).execute()
+        task = service.tasks().get(tasklist=tasklist_id, task=task_id).execute(num_retries=3)
         return _parse_task(task)
     except HttpError as e:
         _handle_api_error(e)
@@ -127,7 +127,7 @@ def create_task(
     if due:
         body["due"] = due
     try:
-        task = service.tasks().insert(tasklist=tasklist_id, body=body).execute()
+        task = service.tasks().insert(tasklist=tasklist_id, body=body).execute(num_retries=3)
         return _parse_task(task)
     except HttpError as e:
         _handle_api_error(e)
@@ -146,7 +146,7 @@ def update_task(
     service = _get_tasks_service(account)
     try:
         # Fetch current task first to merge fields
-        current = service.tasks().get(tasklist=tasklist_id, task=task_id).execute()
+        current = service.tasks().get(tasklist=tasklist_id, task=task_id).execute(num_retries=3)
         if title is not None:
             current["title"] = title
         if notes is not None:
@@ -155,7 +155,7 @@ def update_task(
             current["status"] = status
         if due is not None:
             current["due"] = due
-        task = service.tasks().update(tasklist=tasklist_id, task=task_id, body=current).execute()
+        task = service.tasks().update(tasklist=tasklist_id, task=task_id, body=current).execute(num_retries=3)
         return _parse_task(task)
     except HttpError as e:
         _handle_api_error(e)
@@ -165,7 +165,7 @@ def delete_task(tasklist_id: str, task_id: str, account: str = "default") -> Non
     """Delete a task."""
     service = _get_tasks_service(account)
     try:
-        service.tasks().delete(tasklist=tasklist_id, task=task_id).execute()
+        service.tasks().delete(tasklist=tasklist_id, task=task_id).execute(num_retries=3)
     except HttpError as e:
         _handle_api_error(e)
 

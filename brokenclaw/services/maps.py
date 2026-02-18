@@ -1,6 +1,7 @@
 import requests
 
 from brokenclaw.config import get_settings
+from brokenclaw.http_client import get_session
 from brokenclaw.exceptions import AuthenticationError, IntegrationError, RateLimitError
 from brokenclaw.models.maps import (
     CurrentWeather,
@@ -50,7 +51,7 @@ def _handle_response(resp: requests.Response) -> dict:
 
 def geocode(address: str) -> list[GeocodeResult]:
     """Convert an address to coordinates."""
-    resp = requests.get(
+    resp = get_session().get(
         f"{MAPS_BASE}/geocode/json",
         params={"address": address, "key": _get_api_key()},
     )
@@ -68,7 +69,7 @@ def geocode(address: str) -> list[GeocodeResult]:
 
 def reverse_geocode(lat: float, lng: float) -> list[GeocodeResult]:
     """Convert coordinates to addresses."""
-    resp = requests.get(
+    resp = get_session().get(
         f"{MAPS_BASE}/geocode/json",
         params={"latlng": f"{lat},{lng}", "key": _get_api_key()},
     )
@@ -96,7 +97,7 @@ def directions(
     mode: str = "driving",
 ) -> list[DirectionsRoute]:
     """Get directions between two places. Mode: driving, walking, bicycling, transit."""
-    resp = requests.get(
+    resp = get_session().get(
         f"{MAPS_BASE}/directions/json",
         params={
             "origin": origin,
@@ -129,7 +130,7 @@ def directions(
 
 def search_places(query: str, max_results: int = 10) -> list[PlaceResult]:
     """Search for places by text query."""
-    resp = requests.get(
+    resp = get_session().get(
         f"{MAPS_BASE}/place/textsearch/json",
         params={"query": query, "key": _get_api_key()},
     )
@@ -150,7 +151,7 @@ def search_places(query: str, max_results: int = 10) -> list[PlaceResult]:
 
 def get_place_details(place_id: str) -> PlaceDetail:
     """Get detailed information about a place."""
-    resp = requests.get(
+    resp = get_session().get(
         f"{MAPS_BASE}/place/details/json",
         params={
             "place_id": place_id,
@@ -181,7 +182,7 @@ def distance_matrix(
     mode: str = "driving",
 ) -> list[DistanceMatrixEntry]:
     """Get travel distance and time for multiple origin/destination pairs."""
-    resp = requests.get(
+    resp = get_session().get(
         f"{MAPS_BASE}/distancematrix/json",
         params={
             "origins": "|".join(origins),
@@ -265,7 +266,7 @@ def _format_distance(dist: dict | None) -> str | None:
 
 def get_current_weather(lat: float, lng: float, units: str = "IMPERIAL") -> CurrentWeather:
     """Get current weather conditions at a location."""
-    resp = requests.get(
+    resp = get_session().get(
         f"{WEATHER_BASE}/currentConditions:lookup",
         params={
             "key": _get_api_key(),
@@ -297,7 +298,7 @@ def get_current_weather(lat: float, lng: float, units: str = "IMPERIAL") -> Curr
 
 def get_daily_forecast(lat: float, lng: float, days: int = 5, units: str = "IMPERIAL") -> list[DailyForecast]:
     """Get daily weather forecast for up to 10 days."""
-    resp = requests.get(
+    resp = get_session().get(
         f"{WEATHER_BASE}/forecast/days:lookup",
         params={
             "key": _get_api_key(),
@@ -341,7 +342,7 @@ def get_timezone(lat: float, lng: float) -> TimezoneResult:
     """Get timezone information for a location."""
     import time
     timestamp = int(time.time())
-    resp = requests.get(
+    resp = get_session().get(
         f"{MAPS_BASE}/timezone/json",
         params={
             "location": f"{lat},{lng}",
