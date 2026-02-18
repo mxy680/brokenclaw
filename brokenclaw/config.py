@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     wolfram_app_id: str = ""
     canvas_feed_url: str = ""
     canvas_base_url: str = ""  # e.g. "https://canvas.case.edu"
+    canvas_username: str = ""
+    canvas_password: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

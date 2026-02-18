@@ -154,13 +154,18 @@ def run_canvas_login(
     password: str = "",
     account: str = "default",
 ) -> dict:
-    """Run the Playwright login flow and store the session in tokens.json."""
+    """Run the Playwright login flow and store the session in tokens.json.
+
+    If username/password not provided, falls back to CANVAS_USERNAME/CANVAS_PASSWORD from .env.
+    """
     settings = get_settings()
     base_url = settings.canvas_base_url
     if not base_url:
         raise AuthenticationError(
             "CANVAS_BASE_URL not configured. Set it in .env (e.g. https://canvas.case.edu)"
         )
+    username = username or settings.canvas_username
+    password = password or settings.canvas_password
 
     session_data = asyncio.run(_run_login_flow(base_url, username, password))
 
