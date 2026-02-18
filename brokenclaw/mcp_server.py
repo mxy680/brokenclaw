@@ -13,6 +13,7 @@ from brokenclaw.services import maps as maps_service
 from brokenclaw.services import youtube as youtube_service
 from brokenclaw.services import calendar as calendar_service
 from brokenclaw.services import news as news_service
+from brokenclaw.services import github as github_service
 
 mcp = FastMCP("Brokenclaw")
 
@@ -734,6 +735,123 @@ def news_search(
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 
+
+# --- GitHub tools ---
+
+@mcp.tool
+def github_list_repos(sort: str = "updated", per_page: int = 30) -> dict:
+    """List your GitHub repositories, sorted by most recently updated.
+    Sort options: 'updated', 'created', 'pushed', 'full_name'."""
+    try:
+        repos = github_service.list_repos(sort, per_page)
+        return {"repos": [r.model_dump() for r in repos], "count": len(repos)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def github_get_repo(owner: str, repo: str) -> dict:
+    """Get detailed information about a GitHub repository.
+    Example: owner='octocat', repo='hello-world'."""
+    try:
+        return github_service.get_repo(owner, repo).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def github_search_repos(query: str, sort: str = "stars", per_page: int = 20) -> dict:
+    """Search GitHub repositories. Supports qualifiers like 'language:python stars:>100'.
+    Sort options: 'stars', 'forks', 'updated'."""
+    try:
+        return github_service.search_repos(query, sort, per_page).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def github_list_issues(
+    owner: str,
+    repo: str,
+    state: str = "open",
+    labels: str | None = None,
+    per_page: int = 30,
+) -> dict:
+    """List issues for a GitHub repository (excludes pull requests).
+    Filter by state ('open', 'closed', 'all') and labels (comma-separated)."""
+    try:
+        issues = github_service.list_issues(owner, repo, state, labels, per_page)
+        return {"issues": [i.model_dump() for i in issues], "count": len(issues)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def github_get_issue(owner: str, repo: str, issue_number: int) -> dict:
+    """Get a specific GitHub issue by number. Returns full details including body text."""
+    try:
+        return github_service.get_issue(owner, repo, issue_number).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def github_create_issue(
+    owner: str,
+    repo: str,
+    title: str,
+    body: str | None = None,
+    labels: list[str] | None = None,
+    assignees: list[str] | None = None,
+) -> dict:
+    """Create a new issue in a GitHub repository.
+    Optionally add labels and assignees (GitHub usernames)."""
+    try:
+        return github_service.create_issue(owner, repo, title, body, labels, assignees).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def github_list_pull_requests(
+    owner: str,
+    repo: str,
+    state: str = "open",
+    per_page: int = 30,
+) -> dict:
+    """List pull requests for a GitHub repository.
+    Filter by state: 'open', 'closed', 'all'."""
+    try:
+        prs = github_service.list_pull_requests(owner, repo, state, per_page)
+        return {"pull_requests": [pr.model_dump() for pr in prs], "count": len(prs)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def github_get_pull_request(owner: str, repo: str, pr_number: int) -> dict:
+    """Get detailed info about a specific pull request, including diff stats and merge status."""
+    try:
+        return github_service.get_pull_request(owner, repo, pr_number).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def github_notifications(
+    all_notifications: bool = False,
+    participating: bool = False,
+    per_page: int = 30,
+) -> dict:
+    """List your GitHub notifications. By default shows only unread.
+    Set all_notifications=True for read+unread, participating=True for only direct involvement."""
+    try:
+        notifs = github_service.list_notifications(all_notifications, participating, per_page)
+        return {"notifications": [n.model_dump() for n in notifs], "count": len(notifs)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
 # --- Status tool ---
 
 @mcp.tool
@@ -762,5 +880,10 @@ def brokenclaw_status() -> dict:
     integrations["news"] = {
         "authenticated_accounts": ["api_key"] if news_key else [],
         "message": "API key configured" if news_key else "No API key — get one at newsapi.org and set NEWS_API_KEY in .env",
+    }
+    github_token = get_settings().github_token
+    integrations["github"] = {
+        "authenticated_accounts": ["token"] if github_token else [],
+        "message": "Token configured" if github_token else "No token — create a PAT at github.com/settings/tokens and set GITHUB_TOKEN in .env",
     }
     return {"integrations": integrations}

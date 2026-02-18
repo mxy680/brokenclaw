@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     google_maps_api_key: str = ""
     news_api_key: str = ""
+    github_token: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
