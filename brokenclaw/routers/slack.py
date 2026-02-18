@@ -1,4 +1,5 @@
 import io
+from urllib.parse import quote
 
 from fastapi import APIRouter
 from starlette.responses import StreamingResponse
@@ -20,7 +21,7 @@ def download_file(file_id: str, account: str = "default"):
     return StreamingResponse(
         io.BytesIO(data),
         media_type=mime_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
 
 
