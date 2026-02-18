@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     canvas_password: str = ""
     linkedin_username: str = ""
     linkedin_password: str = ""
+    instagram_username: str = ""
+    instagram_password: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

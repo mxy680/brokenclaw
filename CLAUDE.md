@@ -12,7 +12,7 @@ Integration server that exposes external platforms via REST API + MCP tools for 
 - **OAuth tokens** stored in `tokens.json` (gitignored), keyed by `integration:account`
 - **Multi-account** — all OAuth endpoints/tools accept `account` param (defaults to `"default"`)
 
-## Integrations (15)
+## Integrations (16)
 
 ### Google OAuth-based (9)
 | Integration | Scope | Key Operations |
@@ -36,10 +36,11 @@ Integration server that exposes external platforms via REST API + MCP tools for 
 | Wolfram Alpha | `WOLFRAM_APP_ID` | structured queries, short answers (math, science, facts) |
 | Canvas LMS | `CANVAS_BASE_URL` + session | courses, assignments, grades, announcements, todo, profile (+ iCal fallback via `CANVAS_FEED_URL`) |
 
-### Session-cookie based (1)
+### Session-cookie based (2)
 | Integration | Auth | Key Operations |
 |---|---|---|
 | LinkedIn | Playwright login + Voyager API | profile, feed, connections, conversations, messages, notifications, search people/companies/jobs |
+| Instagram | Playwright login + private web API | profile, feed, posts, stories, reels, followers/following, saved, DMs (list), search, explore |
 
 ## Running
 
@@ -60,6 +61,8 @@ uvicorn brokenclaw.main:app --host 127.0.0.1 --port 9000
 - `brokenclaw/services/canvas_client.py` — Canvas REST API client with session cookies, CSRF rotation, pagination
 - `brokenclaw/services/linkedin_auth.py` — Playwright-based LinkedIn login, verification challenge, cookie capture
 - `brokenclaw/services/linkedin_client.py` — LinkedIn Voyager API client with session cookies, CSRF token, start/count pagination
+- `brokenclaw/services/instagram_auth.py` — Playwright-based Instagram login, 2FA challenge, cookie capture
+- `brokenclaw/services/instagram_client.py` — Instagram private web API client with session cookies, CSRF token, cursor pagination
 - `brokenclaw/models/*.py` — Pydantic models per integration
 - `brokenclaw/routers/*.py` — REST endpoints per integration
 
@@ -76,6 +79,8 @@ uvicorn brokenclaw.main:app --host 127.0.0.1 --port 9000
    CANVAS_BASE_URL=https://canvas.case.edu
    LINKEDIN_USERNAME=...
    LINKEDIN_PASSWORD=...
+   INSTAGRAM_USERNAME=...
+   INSTAGRAM_PASSWORD=...
    ```
 3. Install Playwright: `pip install -e . && playwright install chromium`
 4. Authenticate Google integrations: `http://localhost:9000/auth/{integration}/setup`
@@ -83,6 +88,7 @@ uvicorn brokenclaw.main:app --host 127.0.0.1 --port 9000
 6. Tokens auto-refresh thereafter
 7. Canvas session auth: visit `http://localhost:9000/auth/canvas/setup`, complete SSO + Duo MFA in browser
 8. LinkedIn session auth: visit `http://localhost:9000/auth/linkedin/setup`, complete any verification challenge in browser
+9. Instagram session auth: visit `http://localhost:9000/auth/instagram/setup`, complete any 2FA challenge in browser
 
 ## Adding Integrations
 
@@ -133,4 +139,10 @@ For Claude Code, add to MCP settings:
 - LinkedIn response cookies (especially `__cf_bm` from Cloudflare) must be persisted back to token store after each request
 - LinkedIn `get_full_profile()` returns basic profile info but experience/education/skills are empty — LinkedIn serves section data via server-side rendering, not the Voyager API
 - LinkedIn job search uses REST endpoint `voyagerJobsDashJobCards`, not the GraphQL search endpoint used by people/company search
-- LinkedIn and Canvas auth routes are both defined **before** generic `/{integration}` routes in `auth.py`
+- LinkedIn and Canvas and Instagram auth routes are all defined **before** generic `/{integration}` routes in `auth.py`
+- Instagram uses Playwright for browser-based login; session cookies (`sessionid`, `csrftoken`, `ds_user_id`) stored in `tokens.json` under `"instagram"` key
+- Instagram private web API uses `X-IG-App-ID: 936619743392459`, `X-CSRFToken` header, and `curl_cffi` with Chrome TLS impersonation
+- Instagram `csrftoken` rotates frequently in `Set-Cookie` headers — must persist after every request (same as LinkedIn's cookie rotation)
+- Instagram API split: most endpoints on `https://i.instagram.com/api/v1/`, search + web profile on `https://www.instagram.com/api/v1/`
+- Instagram feed timeline and clips/user (reels) are POST endpoints, not GET
+- Instagram uses cursor-based pagination (`next_max_id` / `max_id`), not offset-based

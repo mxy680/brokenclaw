@@ -17,6 +17,7 @@ from brokenclaw.services import github as github_service
 from brokenclaw.services import wolfram as wolfram_service
 from brokenclaw.services import canvas as canvas_service
 from brokenclaw.services import linkedin as linkedin_service
+from brokenclaw.services import instagram as instagram_service
 
 mcp = FastMCP("Brokenclaw")
 
@@ -1103,6 +1104,122 @@ def linkedin_search_jobs(keywords: str, location: str | None = None, count: int 
         return _handle_mcp_error(e)
 
 
+# --- Instagram tools ---
+
+@mcp.tool
+def instagram_profile(username: str | None = None, account: str = "default") -> dict:
+    """Get an Instagram profile. Omit username to get your own profile.
+    Provide a username to get any user's profile (follower/following counts, bio, etc.)."""
+    try:
+        if username:
+            return instagram_service.get_user_profile(username, account).model_dump()
+        return instagram_service.get_my_profile(account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def instagram_feed(count: int = 20, account: str = "default") -> dict:
+    """Get your Instagram home feed — recent posts from people you follow.
+    Returns posts with captions, media URLs, like/comment counts."""
+    try:
+        posts = instagram_service.get_my_feed(count, account)
+        return {"posts": [p.model_dump() for p in posts], "count": len(posts)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def instagram_user_posts(user_id: str, count: int = 20, account: str = "default") -> dict:
+    """Get a user's posts by their user_id (numeric ID from instagram_profile).
+    Returns posts with captions, media URLs, like/comment counts."""
+    try:
+        posts = instagram_service.get_user_posts(user_id, count, account)
+        return {"posts": [p.model_dump() for p in posts], "count": len(posts)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def instagram_post_comments(post_id: str, count: int = 20, account: str = "default") -> dict:
+    """Get comments on an Instagram post by post_id (from instagram_user_posts or instagram_feed)."""
+    try:
+        comments = instagram_service.get_post_comments(post_id, count, account)
+        return {"comments": [c.model_dump() for c in comments], "count": len(comments)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def instagram_stories(user_id: str | None = None, account: str = "default") -> dict:
+    """Get Instagram stories. Omit user_id to get your stories tray (stories from people you follow).
+    Provide a user_id to get a specific user's stories."""
+    try:
+        if user_id:
+            stories = instagram_service.get_user_stories(user_id, account)
+        else:
+            stories = instagram_service.get_my_stories(account)
+        return {"stories": [s.model_dump() for s in stories], "count": len(stories)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def instagram_reels(user_id: str, count: int = 20, account: str = "default") -> dict:
+    """Get a user's Instagram Reels by their user_id.
+    Returns reels with captions, media URLs, play/like/comment counts."""
+    try:
+        reels = instagram_service.get_user_reels(user_id, count, account)
+        return {"reels": [r.model_dump() for r in reels], "count": len(reels)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def instagram_followers(user_id: str, list_type: str = "followers", count: int = 20, account: str = "default") -> dict:
+    """List a user's followers or following. Set list_type to 'followers' or 'following'.
+    Returns usernames, full names, and profile pics."""
+    try:
+        if list_type == "following":
+            users = instagram_service.list_following(user_id, count, account)
+        else:
+            users = instagram_service.list_followers(user_id, count, account)
+        return {"users": [u.model_dump() for u in users], "count": len(users)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def instagram_saved(count: int = 20, account: str = "default") -> dict:
+    """Get your saved Instagram posts. Returns posts with captions, media URLs, and save timestamps."""
+    try:
+        posts = instagram_service.get_saved_posts(count, account)
+        return {"posts": [p.model_dump() for p in posts], "count": len(posts)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def instagram_direct(count: int = 20, account: str = "default") -> dict:
+    """List your Instagram DM inbox threads (read-only).
+    Returns thread titles, participants, last message preview, and group status."""
+    try:
+        threads = instagram_service.list_direct_threads(count, account)
+        return {"threads": [t.model_dump() for t in threads], "count": len(threads)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def instagram_search(query: str, count: int = 20, account: str = "default") -> dict:
+    """Search Instagram users by keyword. Returns usernames, full names, profile pics, and follower counts."""
+    try:
+        results = instagram_service.search_users(query, count, account)
+        return {"results": [r.model_dump() for r in results], "count": len(results)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
 # --- Status tool ---
 
 @mcp.tool
@@ -1112,6 +1229,7 @@ def brokenclaw_status() -> dict:
     from brokenclaw.config import get_settings
     from brokenclaw.services.canvas_auth import has_canvas_session
     from brokenclaw.services.linkedin_auth import has_linkedin_session
+    from brokenclaw.services.instagram_auth import has_instagram_session
     store = _get_token_store()
     integrations = {}
     for name in SUPPORTED_INTEGRATIONS:
@@ -1168,5 +1286,11 @@ def brokenclaw_status() -> dict:
     integrations["linkedin"] = {
         "authenticated_accounts": ["session"] if li_session else [],
         "message": "Session active" if li_session else "Not authenticated — visit /auth/linkedin/setup",
+    }
+    # Instagram: show session status
+    ig_session = has_instagram_session()
+    integrations["instagram"] = {
+        "authenticated_accounts": ["session"] if ig_session else [],
+        "message": "Session active" if ig_session else "Not authenticated — visit /auth/instagram/setup",
     }
     return {"integrations": integrations}

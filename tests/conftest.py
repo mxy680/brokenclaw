@@ -3,6 +3,7 @@ import pytest
 from brokenclaw.auth import _get_token_store
 from brokenclaw.services.canvas_auth import has_canvas_session
 from brokenclaw.services.linkedin_auth import has_linkedin_session
+from brokenclaw.services.instagram_auth import has_instagram_session
 
 
 def _is_authenticated(integration: str) -> bool:
@@ -63,5 +64,10 @@ requires_canvas_session = pytest.mark.skipif(
 requires_linkedin_session = pytest.mark.skipif(
     not has_linkedin_session(),
     reason="LinkedIn session not available — run /auth/linkedin/setup first",
+)
+
+requires_instagram_session = pytest.mark.skipif(
+    not has_instagram_session(),
+    reason="Instagram session not available — run /auth/instagram/setup first",
 )
 

@@ -209,6 +209,38 @@ def linkedin_status(account: str = "default") -> StatusResponse:
     return StatusResponse(integration="linkedin", authenticated=has_session, message=msg)
 
 
+# Instagram-specific routes (must be defined before generic /{integration} routes)
+
+@router.get("/instagram/setup")
+def instagram_setup(account: str = "default"):
+    """Launch Playwright browser for Instagram login.
+    Credentials pulled from INSTAGRAM_USERNAME/INSTAGRAM_PASSWORD in .env."""
+    from brokenclaw.services.instagram_auth import run_instagram_login
+
+    try:
+        run_instagram_login(account=account)
+        return StatusResponse(
+            integration="instagram",
+            authenticated=True,
+            message=f"Instagram session captured for account '{account}'. You can close this tab.",
+        )
+    except AuthenticationError as e:
+        return StatusResponse(integration="instagram", authenticated=False, message=str(e))
+
+
+@router.get("/instagram/status")
+def instagram_status(account: str = "default") -> StatusResponse:
+    """Check whether Instagram has an active session."""
+    from brokenclaw.services.instagram_auth import has_instagram_session
+
+    has_session = has_instagram_session(account)
+    if has_session:
+        msg = f"Session active (account={account})"
+    else:
+        msg = f"Not authenticated — visit /auth/instagram/setup?account={account}"
+    return StatusResponse(integration="instagram", authenticated=has_session, message=msg)
+
+
 # Canvas-specific routes (must be defined before generic /{integration} routes)
 
 @router.get("/canvas/setup")
