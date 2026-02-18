@@ -12,7 +12,7 @@ Integration server that exposes external platforms via REST API + MCP tools for 
 - **OAuth tokens** stored in `tokens.json` (gitignored), keyed by `integration:account`
 - **Multi-account** — all OAuth endpoints/tools accept `account` param (defaults to `"default"`)
 
-## Integrations (14)
+## Integrations (15)
 
 ### Google OAuth-based (9)
 | Integration | Scope | Key Operations |
@@ -36,6 +36,11 @@ Integration server that exposes external platforms via REST API + MCP tools for 
 | Wolfram Alpha | `WOLFRAM_APP_ID` | structured queries, short answers (math, science, facts) |
 | Canvas LMS | `CANVAS_BASE_URL` + session | courses, assignments, grades, announcements, todo, profile (+ iCal fallback via `CANVAS_FEED_URL`) |
 
+### Session-cookie based (1)
+| Integration | Auth | Key Operations |
+|---|---|---|
+| LinkedIn | Playwright login + Voyager API | profile, feed, connections, conversations, messages, notifications, search people/companies/jobs |
+
 ## Running
 
 ```bash
@@ -53,6 +58,8 @@ uvicorn brokenclaw.main:app --host 127.0.0.1 --port 9000
 - `brokenclaw/services/*.py` — Business logic per integration (shared by REST + MCP)
 - `brokenclaw/services/canvas_auth.py` — Playwright-based Canvas login (SSO + Duo MFA), cookie capture
 - `brokenclaw/services/canvas_client.py` — Canvas REST API client with session cookies, CSRF rotation, pagination
+- `brokenclaw/services/linkedin_auth.py` — Playwright-based LinkedIn login, verification challenge, cookie capture
+- `brokenclaw/services/linkedin_client.py` — LinkedIn Voyager API client with session cookies, CSRF token, start/count pagination
 - `brokenclaw/models/*.py` — Pydantic models per integration
 - `brokenclaw/routers/*.py` — REST endpoints per integration
 
@@ -67,12 +74,15 @@ uvicorn brokenclaw.main:app --host 127.0.0.1 --port 9000
    WOLFRAM_APP_ID=...
    CANVAS_FEED_URL=...
    CANVAS_BASE_URL=https://canvas.case.edu
+   LINKEDIN_USERNAME=...
+   LINKEDIN_PASSWORD=...
    ```
 3. Install Playwright: `pip install -e . && playwright install chromium`
 4. Authenticate Google integrations: `http://localhost:9000/auth/{integration}/setup`
 5. Add redirect URIs to Google Cloud Console: `http://localhost:9000/auth/{integration}/callback`
 6. Tokens auto-refresh thereafter
 7. Canvas session auth: visit `http://localhost:9000/auth/canvas/setup`, complete SSO + Duo MFA in browser
+8. LinkedIn session auth: visit `http://localhost:9000/auth/linkedin/setup`, complete any verification challenge in browser
 
 ## Adding Integrations
 
@@ -116,3 +126,6 @@ For Claude Code, add to MCP settings:
 - Canvas uses Playwright for browser-based session auth (SSO + Duo MFA); session cookies stored in `tokens.json` under `"canvas"` key
 - Canvas REST API client uses session cookies + CSRF token rotation, not OAuth
 - Canvas auth routes are defined **before** generic `/{integration}` routes in `auth.py` to prevent path conflicts
+- LinkedIn uses Playwright for browser-based login; session cookies (`li_at`, `JSESSIONID`) stored in `tokens.json` under `"linkedin"` key
+- LinkedIn Voyager API uses `Csrf-Token` header (JSESSIONID without quotes), `X-Restli-Protocol-Version: 2.0.0`, and normalized+json accept header
+- LinkedIn and Canvas auth routes are both defined **before** generic `/{integration}` routes in `auth.py`

@@ -177,6 +177,38 @@ def get_calendar_credentials(account: str = "default") -> Credentials:
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+# LinkedIn-specific routes (must be defined before generic /{integration} routes)
+
+@router.get("/linkedin/setup")
+def linkedin_setup(account: str = "default"):
+    """Launch Playwright browser for LinkedIn login.
+    Credentials pulled from LINKEDIN_USERNAME/LINKEDIN_PASSWORD in .env."""
+    from brokenclaw.services.linkedin_auth import run_linkedin_login
+
+    try:
+        run_linkedin_login(account=account)
+        return StatusResponse(
+            integration="linkedin",
+            authenticated=True,
+            message=f"LinkedIn session captured for account '{account}'. You can close this tab.",
+        )
+    except AuthenticationError as e:
+        return StatusResponse(integration="linkedin", authenticated=False, message=str(e))
+
+
+@router.get("/linkedin/status")
+def linkedin_status(account: str = "default") -> StatusResponse:
+    """Check whether LinkedIn has an active session."""
+    from brokenclaw.services.linkedin_auth import has_linkedin_session
+
+    has_session = has_linkedin_session(account)
+    if has_session:
+        msg = f"Session active (account={account})"
+    else:
+        msg = f"Not authenticated — visit /auth/linkedin/setup?account={account}"
+    return StatusResponse(integration="linkedin", authenticated=has_session, message=msg)
+
+
 # Canvas-specific routes (must be defined before generic /{integration} routes)
 
 @router.get("/canvas/setup")

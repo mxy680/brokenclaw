@@ -16,6 +16,7 @@ from brokenclaw.services import news as news_service
 from brokenclaw.services import github as github_service
 from brokenclaw.services import wolfram as wolfram_service
 from brokenclaw.services import canvas as canvas_service
+from brokenclaw.services import linkedin as linkedin_service
 
 mcp = FastMCP("Brokenclaw")
 
@@ -1000,6 +1001,108 @@ def canvas_todo(account: str = "default") -> dict:
         return _handle_mcp_error(e)
 
 
+# --- LinkedIn tools ---
+
+@mcp.tool
+def linkedin_profile(public_id: str | None = None, account: str = "default") -> dict:
+    """Get a LinkedIn profile. Omit public_id to get your own profile.
+    Provide a public_id (the slug from linkedin.com/in/{slug}) to get someone else's full profile
+    including experience, education, and skills."""
+    try:
+        if public_id:
+            return linkedin_service.get_full_profile(public_id, account).model_dump()
+        return linkedin_service.get_my_profile(account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def linkedin_feed(count: int = 20, account: str = "default") -> dict:
+    """Get your LinkedIn feed — recent posts from your network.
+    Returns post text, author, likes, comments, and URLs."""
+    try:
+        posts = linkedin_service.get_feed(count, account)
+        return {"posts": [p.model_dump() for p in posts], "count": len(posts)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def linkedin_connections(count: int = 20, start: int = 0, account: str = "default") -> dict:
+    """List your LinkedIn connections, sorted by most recently added.
+    Returns names, headlines, and profile URLs."""
+    try:
+        conns = linkedin_service.list_connections(count, start, account)
+        return {"connections": [c.model_dump() for c in conns], "count": len(conns)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def linkedin_conversations(count: int = 20, account: str = "default") -> dict:
+    """List your LinkedIn messaging conversations.
+    Returns participants, last message preview, and unread status."""
+    try:
+        convos = linkedin_service.list_conversations(count, account)
+        return {"conversations": [c.model_dump() for c in convos], "count": len(convos)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def linkedin_messages(conversation_urn: str, count: int = 20, account: str = "default") -> dict:
+    """Get messages from a specific LinkedIn conversation.
+    Use linkedin_conversations first to get the conversation_urn."""
+    try:
+        msgs = linkedin_service.get_conversation_messages(conversation_urn, count, account)
+        return {"messages": [m.model_dump() for m in msgs], "count": len(msgs)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def linkedin_notifications(count: int = 20, account: str = "default") -> dict:
+    """Get your recent LinkedIn notifications."""
+    try:
+        notifs = linkedin_service.list_notifications(count, account)
+        return {"notifications": [n.model_dump() for n in notifs], "count": len(notifs)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def linkedin_search_people(keywords: str, count: int = 10, account: str = "default") -> dict:
+    """Search for people on LinkedIn by keywords (name, title, company, etc.).
+    Returns names, headlines, locations, and profile URLs."""
+    try:
+        results = linkedin_service.search_people(keywords, count, account)
+        return {"results": [r.model_dump() for r in results], "count": len(results)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def linkedin_search_companies(keywords: str, count: int = 10, account: str = "default") -> dict:
+    """Search for companies on LinkedIn by keywords.
+    Returns company names, descriptions, and URLs."""
+    try:
+        results = linkedin_service.search_companies(keywords, count, account)
+        return {"results": [r.model_dump() for r in results], "count": len(results)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def linkedin_search_jobs(keywords: str, location: str | None = None, count: int = 10, account: str = "default") -> dict:
+    """Search for jobs on LinkedIn by keywords and optional location.
+    Returns job titles, companies, locations, and URLs."""
+    try:
+        results = linkedin_service.search_jobs(keywords, location, count, account)
+        return {"results": [r.model_dump() for r in results], "count": len(results)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
 # --- Status tool ---
 
 @mcp.tool
@@ -1008,6 +1111,7 @@ def brokenclaw_status() -> dict:
     Shows all authenticated accounts per integration and Maps API key status."""
     from brokenclaw.config import get_settings
     from brokenclaw.services.canvas_auth import has_canvas_session
+    from brokenclaw.services.linkedin_auth import has_linkedin_session
     store = _get_token_store()
     integrations = {}
     for name in SUPPORTED_INTEGRATIONS:
@@ -1058,5 +1162,11 @@ def brokenclaw_status() -> dict:
     integrations["canvas"] = {
         "authenticated_accounts": canvas_accounts,
         "message": canvas_msg,
+    }
+    # LinkedIn: show session status
+    li_session = has_linkedin_session()
+    integrations["linkedin"] = {
+        "authenticated_accounts": ["session"] if li_session else [],
+        "message": "Session active" if li_session else "Not authenticated — visit /auth/linkedin/setup",
     }
     return {"integrations": integrations}

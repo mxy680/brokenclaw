@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     canvas_base_url: str = ""  # e.g. "https://canvas.case.edu"
     canvas_username: str = ""
     canvas_password: str = ""
+    linkedin_username: str = ""
+    linkedin_password: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

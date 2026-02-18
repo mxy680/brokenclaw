@@ -24,6 +24,7 @@ from brokenclaw.routers.news import router as news_router
 from brokenclaw.routers.github import router as github_router
 from brokenclaw.routers.wolfram import router as wolfram_router
 from brokenclaw.routers.canvas import router as canvas_router
+from brokenclaw.routers.linkedin import router as linkedin_router
 
 
 # --- Localhost-only middleware ---
@@ -57,12 +58,14 @@ api.include_router(news_router)
 api.include_router(github_router)
 api.include_router(wolfram_router)
 api.include_router(canvas_router)
+api.include_router(linkedin_router)
 
 
 @api.get("/api/status")
 def api_status() -> dict:
     from brokenclaw.auth import _get_token_store
     from brokenclaw.services.canvas_auth import has_canvas_session
+    from brokenclaw.services.linkedin_auth import has_linkedin_session
 
     store = _get_token_store()
     statuses = {}
@@ -79,6 +82,12 @@ def api_status() -> dict:
         "session_active": canvas_session,
         "ical_feed_configured": canvas_feed,
         "ready": canvas_session or canvas_feed,
+    }
+    # LinkedIn session status
+    li_session = has_linkedin_session()
+    statuses["linkedin"] = {
+        "session_active": li_session,
+        "ready": li_session,
     }
     return {"integrations": statuses}
 
