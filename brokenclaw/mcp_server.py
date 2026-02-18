@@ -884,22 +884,118 @@ def wolfram_short_answer(input: str, units: str = "imperial") -> dict:
 # --- Canvas tools ---
 
 @mcp.tool
-def canvas_upcoming(days: int = 14) -> dict:
+def canvas_upcoming(days: int = 14, account: str = "default") -> dict:
     """Get upcoming Canvas LMS assignments and events within the next N days (default 14).
+    Uses REST API if session is available, falls back to iCal feed.
     Returns assignment names, due dates, course names, and Canvas URLs.
     Great for checking what's due soon."""
     try:
-        return canvas_service.get_upcoming(days).model_dump()
+        return canvas_service.get_upcoming(days, account=account).model_dump()
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 
 
 @mcp.tool
 def canvas_all_events() -> dict:
-    """Get all Canvas LMS assignments and events from the calendar feed.
+    """Get all Canvas LMS assignments and events from the iCal calendar feed.
     Includes past and future items, sorted chronologically."""
     try:
         return canvas_service.get_all_events().model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def canvas_profile(account: str = "default") -> dict:
+    """Get your Canvas user profile — name, email, login ID, and avatar URL.
+    Requires REST API session (visit /auth/canvas/setup first)."""
+    try:
+        return canvas_service.get_profile(account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def canvas_courses(enrollment_state: str = "active", account: str = "default") -> dict:
+    """List your Canvas courses. Filter by enrollment_state: 'active', 'completed', 'invited'.
+    Returns course names, codes, term info, and URLs."""
+    try:
+        courses = canvas_service.list_courses(enrollment_state, account)
+        return {"courses": [c.model_dump() for c in courses], "count": len(courses)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def canvas_course(course_id: int, account: str = "default") -> dict:
+    """Get details for a specific Canvas course by ID."""
+    try:
+        return canvas_service.get_course(course_id, account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def canvas_assignments(course_id: int, order_by: str = "due_at", account: str = "default") -> dict:
+    """List assignments for a Canvas course. Order by 'due_at', 'name', or 'position'.
+    Returns assignment names, due dates, point values, and submission types."""
+    try:
+        assignments = canvas_service.list_assignments(course_id, order_by, account)
+        return {"assignments": [a.model_dump() for a in assignments], "count": len(assignments)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def canvas_assignment(course_id: int, assignment_id: int, account: str = "default") -> dict:
+    """Get details for a specific assignment including description and grading info."""
+    try:
+        return canvas_service.get_assignment(course_id, assignment_id, account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def canvas_announcements(course_ids: str | None = None, account: str = "default") -> dict:
+    """List announcements from Canvas courses. Provide comma-separated course IDs,
+    or omit to get announcements from all active courses.
+    Returns titles, messages, authors, and post dates."""
+    try:
+        ids = [int(x) for x in course_ids.split(",")] if course_ids else None
+        announcements = canvas_service.list_announcements(ids, account)
+        return {"announcements": [a.model_dump() for a in announcements], "count": len(announcements)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def canvas_grades(course_id: int, account: str = "default") -> dict:
+    """Get your grades for a specific Canvas course.
+    Returns current score, final score, current grade letter, and final grade letter."""
+    try:
+        return canvas_service.get_grades(course_id, account).model_dump()
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def canvas_submissions(course_id: int, assignment_id: int, account: str = "default") -> dict:
+    """List your submissions for a specific assignment.
+    Returns submission status, score, grade, and whether it was late or missing."""
+    try:
+        submissions = canvas_service.list_submissions(course_id, assignment_id, account)
+        return {"submissions": [s.model_dump() for s in submissions], "count": len(submissions)}
+    except (AuthenticationError, IntegrationError, RateLimitError) as e:
+        return _handle_mcp_error(e)
+
+
+@mcp.tool
+def canvas_todo(account: str = "default") -> dict:
+    """Get your Canvas TODO items — upcoming assignments that need attention.
+    Returns assignment names, courses, due dates, and point values."""
+    try:
+        items = canvas_service.get_todo(account)
+        return {"items": [i.model_dump() for i in items], "count": len(items)}
     except (AuthenticationError, IntegrationError, RateLimitError) as e:
         return _handle_mcp_error(e)
 
@@ -911,6 +1007,7 @@ def brokenclaw_status() -> dict:
     """Check which integrations are authenticated and ready to use.
     Shows all authenticated accounts per integration and Maps API key status."""
     from brokenclaw.config import get_settings
+    from brokenclaw.services.canvas_auth import has_canvas_session
     store = _get_token_store()
     integrations = {}
     for name in SUPPORTED_INTEGRATIONS:
@@ -943,9 +1040,23 @@ def brokenclaw_status() -> dict:
         "authenticated_accounts": ["app_id"] if wolfram_id else [],
         "message": "AppID configured" if wolfram_id else "No AppID — get one at developer.wolframalpha.com and set WOLFRAM_APP_ID in .env",
     }
-    canvas_url = get_settings().canvas_feed_url
+    # Canvas: show REST API session status + iCal status
+    canvas_session = has_canvas_session()
+    canvas_feed = bool(get_settings().canvas_feed_url)
+    if canvas_session and canvas_feed:
+        canvas_accounts = ["rest_session", "ical_feed"]
+        canvas_msg = "REST API session active + iCal feed configured"
+    elif canvas_session:
+        canvas_accounts = ["rest_session"]
+        canvas_msg = "REST API session active"
+    elif canvas_feed:
+        canvas_accounts = ["ical_feed"]
+        canvas_msg = "iCal feed only — visit /auth/canvas/setup for full REST API access"
+    else:
+        canvas_accounts = []
+        canvas_msg = "Not configured — visit /auth/canvas/setup or set CANVAS_FEED_URL in .env"
     integrations["canvas"] = {
-        "authenticated_accounts": ["ical_feed"] if canvas_url else [],
-        "message": "iCal feed URL configured" if canvas_url else "No feed URL — set CANVAS_FEED_URL in .env (get from Canvas > Calendar > Calendar Feed)",
+        "authenticated_accounts": canvas_accounts,
+        "message": canvas_msg,
     }
     return {"integrations": integrations}

@@ -177,6 +177,42 @@ def get_calendar_credentials(account: str = "default") -> Credentials:
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+# Canvas-specific routes (must be defined before generic /{integration} routes)
+
+@router.get("/canvas/setup")
+def canvas_setup(account: str = "default"):
+    """Launch Playwright browser for Canvas SSO + Duo MFA login."""
+    from brokenclaw.services.canvas_auth import run_canvas_login
+
+    try:
+        run_canvas_login(account)
+        return StatusResponse(
+            integration="canvas",
+            authenticated=True,
+            message=f"Canvas session captured for account '{account}'. You can close this tab.",
+        )
+    except AuthenticationError as e:
+        return StatusResponse(integration="canvas", authenticated=False, message=str(e))
+
+
+@router.get("/canvas/status")
+def canvas_status(account: str = "default") -> StatusResponse:
+    """Check whether Canvas has an active session."""
+    from brokenclaw.services.canvas_auth import has_canvas_session
+
+    has_session = has_canvas_session(account)
+    feed_url = get_settings().canvas_feed_url
+    if has_session:
+        msg = f"REST API session active (account={account})"
+    elif feed_url:
+        msg = "iCal feed only — visit /auth/canvas/setup for full REST API access"
+    else:
+        msg = f"Not authenticated — visit /auth/canvas/setup?account={account}"
+    return StatusResponse(integration="canvas", authenticated=has_session or bool(feed_url), message=msg)
+
+
+# Generic OAuth routes
+
 @router.get("/{integration}/setup")
 def auth_setup(integration: str, account: str = "default"):
     """Redirect to Google OAuth consent screen. Use ?account=name for multiple accounts."""

@@ -1,6 +1,7 @@
 import pytest
 
 from brokenclaw.auth import _get_token_store
+from brokenclaw.services.canvas_auth import has_canvas_session
 
 
 def _is_authenticated(integration: str) -> bool:
@@ -51,5 +52,10 @@ requires_youtube = pytest.mark.skipif(
 requires_calendar = pytest.mark.skipif(
     not _is_authenticated("calendar"),
     reason="Calendar not authenticated — run /auth/calendar/setup first",
+)
+
+requires_canvas_session = pytest.mark.skipif(
+    not has_canvas_session(),
+    reason="Canvas session not available — run /auth/canvas/setup first",
 )
 

@@ -62,6 +62,7 @@ api.include_router(canvas_router)
 @api.get("/api/status")
 def api_status() -> dict:
     from brokenclaw.auth import _get_token_store
+    from brokenclaw.services.canvas_auth import has_canvas_session
 
     store = _get_token_store()
     statuses = {}
@@ -71,6 +72,14 @@ def api_status() -> dict:
             "authenticated_accounts": accounts,
             "ready": len(accounts) > 0,
         }
+    # Canvas session status
+    canvas_session = has_canvas_session()
+    canvas_feed = bool(get_settings().canvas_feed_url)
+    statuses["canvas"] = {
+        "session_active": canvas_session,
+        "ical_feed_configured": canvas_feed,
+        "ready": canvas_session or canvas_feed,
+    }
     return {"integrations": statuses}
 
 

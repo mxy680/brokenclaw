@@ -34,7 +34,7 @@ Integration server that exposes external platforms via REST API + MCP tools for 
 | News | `NEWS_API_KEY` | top headlines, search articles |
 | GitHub | `GITHUB_TOKEN` | repos, issues, PRs, notifications, search |
 | Wolfram Alpha | `WOLFRAM_APP_ID` | structured queries, short answers (math, science, facts) |
-| Canvas LMS | `CANVAS_FEED_URL` | upcoming assignments/events via iCal feed |
+| Canvas LMS | `CANVAS_BASE_URL` + session | courses, assignments, grades, announcements, todo, profile (+ iCal fallback via `CANVAS_FEED_URL`) |
 
 ## Running
 
@@ -47,10 +47,12 @@ uvicorn brokenclaw.main:app --host 127.0.0.1 --port 9000
 
 - `brokenclaw/main.py` — App assembly, middleware, exception handlers
 - `brokenclaw/mcp_server.py` — All MCP tools (what Claude sees)
-- `brokenclaw/auth.py` — OAuth2 flow + token persistence (Google integrations)
+- `brokenclaw/auth.py` — OAuth2 flow + token persistence (Google integrations) + Canvas auth routes
 - `brokenclaw/config.py` — pydantic-settings, reads `.env`
 - `brokenclaw/exceptions.py` — `AuthenticationError`, `IntegrationError`, `RateLimitError`
 - `brokenclaw/services/*.py` — Business logic per integration (shared by REST + MCP)
+- `brokenclaw/services/canvas_auth.py` — Playwright-based Canvas login (SSO + Duo MFA), cookie capture
+- `brokenclaw/services/canvas_client.py` — Canvas REST API client with session cookies, CSRF rotation, pagination
 - `brokenclaw/models/*.py` — Pydantic models per integration
 - `brokenclaw/routers/*.py` — REST endpoints per integration
 
@@ -64,10 +66,13 @@ uvicorn brokenclaw.main:app --host 127.0.0.1 --port 9000
    GITHUB_TOKEN=...
    WOLFRAM_APP_ID=...
    CANVAS_FEED_URL=...
+   CANVAS_BASE_URL=https://canvas.case.edu
    ```
-3. Authenticate Google integrations: `http://localhost:9000/auth/{integration}/setup`
-4. Add redirect URIs to Google Cloud Console: `http://localhost:9000/auth/{integration}/callback`
-5. Tokens auto-refresh thereafter
+3. Install Playwright: `pip install -e . && playwright install chromium`
+4. Authenticate Google integrations: `http://localhost:9000/auth/{integration}/setup`
+5. Add redirect URIs to Google Cloud Console: `http://localhost:9000/auth/{integration}/callback`
+6. Tokens auto-refresh thereafter
+7. Canvas session auth: visit `http://localhost:9000/auth/canvas/setup`, complete SSO + Duo MFA in browser
 
 ## Adding Integrations
 
@@ -107,4 +112,7 @@ For Claude Code, add to MCP settings:
 - OAuth client is a **web** type (not desktop) — uses redirect-based flow
 - `OAUTHLIB_RELAX_TOKEN_SCOPE` is set to handle Google returning broader scopes
 - API-key integrations use `requests` library directly (not googleapiclient)
-- `requests` and `icalendar` are explicit dependencies in pyproject.toml
+- `requests`, `icalendar`, and `playwright` are explicit dependencies in pyproject.toml
+- Canvas uses Playwright for browser-based session auth (SSO + Duo MFA); session cookies stored in `tokens.json` under `"canvas"` key
+- Canvas REST API client uses session cookies + CSRF token rotation, not OAuth
+- Canvas auth routes are defined **before** generic `/{integration}` routes in `auth.py` to prevent path conflicts

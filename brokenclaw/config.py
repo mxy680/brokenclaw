@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     github_token: str = ""
     wolfram_app_id: str = ""
     canvas_feed_url: str = ""
+    canvas_base_url: str = ""  # e.g. "https://canvas.case.edu"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
